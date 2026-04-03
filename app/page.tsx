@@ -1,11 +1,3 @@
-export default function Home() {
-  return (
-    <main>
-      <h1>Welcome to My New Site!</h1>
-      <p>This is no longer the default page.</p>
-    </main>
-  );
-}
 'use client'
 import { useState } from 'react'
 
