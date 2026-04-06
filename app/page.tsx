@@ -33,19 +33,14 @@ export default function Dashboard() {
         overflow: 'hidden',
         flexShrink: 0,
       }}>
-
-        {/* Logo */}
         <div style={{ padding: '24px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)', whiteSpace: 'nowrap' }}>
           <div style={{ fontSize: '22px', fontWeight: 900 }}>
             <span style={{ color: '#ffffff' }}>SEWER </span>
             <span style={{ color: '#2D8C4E' }}>LABZ</span>
           </div>
-          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', marginTop: '2px' }}>
-            Inspection Platform
-          </div>
+          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', marginTop: '2px' }}>Inspection Platform</div>
         </div>
 
-        {/* Nav */}
         <nav style={{ flex: 1, padding: '16px 12px' }}>
           {[
             { icon: '⊞', label: 'Dashboard', href: '/', active: true },
@@ -57,17 +52,11 @@ export default function Dashboard() {
               key={item.label}
               onClick={() => window.location.href = item.href}
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                padding: '10px 12px',
-                borderRadius: '8px',
-                marginBottom: '4px',
+                display: 'flex', alignItems: 'center', gap: '10px',
+                padding: '10px 12px', borderRadius: '8px', marginBottom: '4px',
                 background: item.active ? '#2D8C4E' : 'transparent',
                 color: item.active ? '#fff' : 'rgba(255,255,255,0.65)',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                fontSize: '14px',
+                cursor: 'pointer', whiteSpace: 'nowrap', fontSize: '14px',
                 fontWeight: item.active ? 600 : 400,
               }}
             >
@@ -77,14 +66,12 @@ export default function Dashboard() {
           ))}
         </nav>
 
-        {/* User */}
         <div style={{ padding: '16px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{
               width: '36px', height: '36px', borderRadius: '50%',
               background: '#2D8C4E', display: 'flex', alignItems: 'center',
-              justifyContent: 'center', color: '#fff', fontWeight: 700,
-              fontSize: '14px', flexShrink: 0,
+              justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '14px', flexShrink: 0,
             }}>AR</div>
             <div>
               <div style={{ color: '#fff', fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap' }}>Ajay Raymon</div>
@@ -92,10 +79,9 @@ export default function Dashboard() {
             </div>
           </div>
           <button style={{
-            marginTop: '12px', width: '100%', padding: '8px',
-            borderRadius: '6px', background: 'rgba(255,255,255,0.08)',
-            color: 'rgba(255,255,255,0.6)', fontSize: '12px',
-            textAlign: 'center', cursor: 'pointer', border: 'none',
+            marginTop: '12px', width: '100%', padding: '8px', borderRadius: '6px',
+            background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)',
+            fontSize: '12px', textAlign: 'center', cursor: 'pointer', border: 'none',
           }}>Logout</button>
         </div>
       </div>
@@ -110,36 +96,16 @@ export default function Dashboard() {
           justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 10,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#64748B' }}
-            >☰</button>
+            <button onClick={() => setSidebarOpen(!sidebarOpen)} style={{
+              background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#64748B',
+            }}>☰</button>
             <h1 style={{ fontSize: '18px', fontWeight: 700, color: '#0F2A4A', margin: 0 }}>Dashboard</h1>
           </div>
-          <button
-            onClick={() => window.location.href = '/reports/new'}
-            style={{
-              background: '#2D8C4E', color: '#fff', border: 'none',
-              padding: '9px 18px', borderRadius: '8px', fontSize: '14px',
-              fontWeight: 600, cursor: 'pointer',
-            }}
-          >+ New Report</button>
-        </div>
-
-        {/* Trial banner */}
-        <div style={{
-          background: '#FFFBEB', borderBottom: '1px solid #FDE68A',
-          padding: '10px 24px', display: 'flex',
-          alignItems: 'center', justifyContent: 'space-between',
-        }}>
-          <span style={{ color: '#92400E', fontSize: '14px' }}>
-            ⚠️ You have <strong>5 days</strong> left on your free trial.
-          </span>
-          <button style={{
+          <button onClick={() => window.location.href = '/reports/new'} style={{
             background: '#2D8C4E', color: '#fff', border: 'none',
-            padding: '6px 14px', borderRadius: '6px',
-            fontSize: '13px', fontWeight: 600, cursor: 'pointer',
-          }}>Subscribe Now</button>
+            padding: '9px 18px', borderRadius: '8px', fontSize: '14px',
+            fontWeight: 600, cursor: 'pointer',
+          }}>+ New Report</button>
         </div>
 
         {/* Content */}
@@ -206,14 +172,12 @@ export default function Dashboard() {
                           <button key={action} style={{
                             background: 'none', border: '1px solid #E2E8F0',
                             borderRadius: '6px', padding: '5px 10px',
-                            fontSize: '12px', cursor: 'pointer',
-                            color: '#64748B', fontWeight: 500,
+                            fontSize: '12px', cursor: 'pointer', color: '#64748B', fontWeight: 500,
                           }}>{action}</button>
                         ))}
                         <button style={{
-                          background: '#2D8C4E', border: 'none',
-                          borderRadius: '6px', padding: '5px 10px',
-                          fontSize: '12px', cursor: 'pointer',
+                          background: '#2D8C4E', border: 'none', borderRadius: '6px',
+                          padding: '5px 10px', fontSize: '12px', cursor: 'pointer',
                           color: '#fff', fontWeight: 500,
                         }}>PDF</button>
                       </div>
