@@ -1,261 +1,223 @@
 'use client'
+
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth'
+import { auth } from '@/app/Lib/firebase'
 
 export default function SignupPage() {
-  const [form, setForm] = useState({
-    name: '', email: '', password: '', confirmPassword: '', company: ''
-  })
+  const router = useRouter()
+  const [fullName, setFullName] = useState('')
+  const [email, setEmail] = useState('')
+  const [companyName, setCompanyName] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [agreed, setAgreed] = useState(false)
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [showTerms, setShowTerms] = useState(false)
+  const [loading, setLoading] = useState(false)
 
-  const update = (field: string, value: string) =>
-    setForm(prev => ({ ...prev, [field]: value }))
-
-  const getStrength = () => {
-    const p = form.password
-    if (p.length === 0) return 0
-    if (p.length < 6) return 1
-    if (p.length < 10) return 2
-    return 3
-  }
-
-  const strengthColor = ['#E2E8F0', '#DC2626', '#D97706', '#2D8C4E']
-  const strengthLabel = ['', 'Weak', 'Medium', 'Strong']
-
-  const handleSignup = async () => {
-    if (!form.name || !form.email || !form.password || !form.company) {
-      setError('Please fill in all fields')
-      return
-    }
-    if (form.password !== form.confirmPassword) {
-      setError('Passwords do not match')
-      return
-    }
-    if (!agreed) {
-      setError('You must agree to the Terms & Conditions')
-      return
-    }
-    setLoading(true)
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault()
     setError('')
-    setTimeout(() => {
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
+
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.')
+      return
+    }
+
+    if (!agreed) {
+      setError('You must agree to the Terms & Conditions.')
+      return
+    }
+
+    setLoading(true)
+
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password)
+      
+      await updateProfile(userCredential.user, {
+        displayName: fullName
+      })
+
+      // Save user to database
+      await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firebaseUid: userCredential.user.uid,
+          email,
+          name: fullName,
+          companyName
+        })
+      })
+
+      router.push('/')
+    } catch (err: any) {
+      switch (err.code) {
+        case 'auth/email-already-in-use':
+          setError('An account with this email already exists.')
+          break
+        case 'auth/invalid-email':
+          setError('Invalid email address.')
+          break
+        case 'auth/weak-password':
+          setError('Password is too weak. Use at least 8 characters.')
+          break
+        default:
+          setError('Signup failed. Please try again.')
+      }
+    } finally {
       setLoading(false)
-      window.location.href = '/'
-    }, 1500)
+    }
   }
 
   return (
-    <div style={{
-      minHeight: '100vh', background: '#F8FAFC',
-      display: 'flex', alignItems: 'center',
-      justifyContent: 'center', fontFamily: 'Inter, sans-serif',
-      padding: '20px',
-    }}>
-      <div style={{
-        background: '#fff', borderRadius: '16px',
-        border: '1px solid #E2E8F0', padding: '40px',
-        width: '100%', maxWidth: '480px',
-        boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
-      }}>
+    <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC] py-10">
+      <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-8">
 
         {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-          <div style={{ fontSize: '28px', fontWeight: 800, color: '#0F2A4A', letterSpacing: '-0.5px' }}>
-            <span style={{ color: '#0F2A4A' }}>SEWER </span>
-            <span style={{ color: '#2D8C4E' }}>LABZ</span>
-          </div>
-          <div style={{ color: '#64748B', fontSize: '14px', marginTop: '4px' }}>
-            Create your free account
-          </div>
-          <div style={{
-            display: 'inline-block', marginTop: '8px',
-            background: '#E8F5EE', color: '#2D8C4E',
-            fontSize: '12px', fontWeight: 600,
-            padding: '4px 12px', borderRadius: '20px',
-          }}>✓ 7-day free trial — no credit card required</div>
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-black text-[#0F2A4A]">
+            SEWER <span className="text-[#2D8C4A]">LABZ</span>
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">Create your free account — no card required</p>
         </div>
+
+        {/* Title */}
+        <h2 className="text-xl font-bold text-[#0F172A] mb-6">Create your account</h2>
 
         {/* Error */}
         {error && (
-          <div style={{
-            background: '#FEF2F2', border: '1px solid #FECACA',
-            borderRadius: '8px', padding: '12px 16px',
-            color: '#DC2626', fontSize: '14px', marginBottom: '20px',
-          }}>{error}</div>
+          <div className="bg-red-50 border border-red-200 text-red-600 rounded-lg px-4 py-3 mb-4 text-sm">
+            {error}
+          </div>
         )}
 
-        {/* Fields */}
-        {[
-          { label: 'Full name', field: 'name', type: 'text', placeholder: 'John Smith' },
-          { label: 'Email address', field: 'email', type: 'email', placeholder: 'you@company.com' },
-          { label: 'Company name', field: 'company', type: 'text', placeholder: 'Acme Inspections Ltd' },
-        ].map(({ label, field, type, placeholder }) => (
-          <div key={field} style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#0F172A', marginBottom: '6px' }}>
-              {label}
+        {/* Form */}
+        <form onSubmit={handleSignup} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-[#0F172A] mb-1">
+              Full name
             </label>
             <input
-              type={type}
-              value={form[field as keyof typeof form]}
-              onChange={e => update(field, e.target.value)}
-              placeholder={placeholder}
-              style={{
-                width: '100%', height: '42px', borderRadius: '8px',
-                border: '1px solid #E2E8F0', padding: '0 14px',
-                fontSize: '14px', color: '#0F172A', outline: 'none',
-                boxSizing: 'border-box', background: '#F8FAFC',
-              }}
+              type="text"
+              required
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              placeholder="Heath R. Browning"
+              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2D8C4A] focus:border-transparent"
             />
           </div>
-        ))}
 
-        {/* Password */}
-        <div style={{ marginBottom: '8px' }}>
-          <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#0F172A', marginBottom: '6px' }}>
-            Password
-          </label>
-          <input
-            type="password"
-            value={form.password}
-            onChange={e => update('password', e.target.value)}
-            placeholder="Min 8 characters"
-            style={{
-              width: '100%', height: '42px', borderRadius: '8px',
-              border: '1px solid #E2E8F0', padding: '0 14px',
-              fontSize: '14px', color: '#0F172A', outline: 'none',
-              boxSizing: 'border-box', background: '#F8FAFC',
-            }}
-          />
-          {form.password.length > 0 && (
-            <div style={{ display: 'flex', gap: '4px', marginTop: '6px', alignItems: 'center' }}>
-              {[1, 2, 3].map(i => (
-                <div key={i} style={{
-                  height: '4px', flex: 1, borderRadius: '2px',
-                  background: i <= getStrength() ? strengthColor[getStrength()] : '#E2E8F0',
-                  transition: 'background 0.2s',
-                }} />
-              ))}
-              <span style={{ fontSize: '12px', color: strengthColor[getStrength()], marginLeft: '6px', minWidth: '48px' }}>
-                {strengthLabel[getStrength()]}
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Confirm password */}
-        <div style={{ marginBottom: '20px' }}>
-          <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#0F172A', marginBottom: '6px' }}>
-            Confirm password
-          </label>
-          <input
-            type="password"
-            value={form.confirmPassword}
-            onChange={e => update('confirmPassword', e.target.value)}
-            placeholder="••••••••"
-            style={{
-              width: '100%', height: '42px', borderRadius: '8px',
-              border: `1px solid ${form.confirmPassword && form.password !== form.confirmPassword ? '#DC2626' : '#E2E8F0'}`,
-              padding: '0 14px', fontSize: '14px', color: '#0F172A',
-              outline: 'none', boxSizing: 'border-box', background: '#F8FAFC',
-            }}
-          />
-        </div>
-
-        {/* Disclaimer box */}
-        <div style={{
-          background: '#FFFBEB', border: '1px solid #FDE68A',
-          borderRadius: '8px', padding: '14px 16px', marginBottom: '16px',
-        }}>
-          <div style={{ fontSize: '13px', fontWeight: 600, color: '#92400E', marginBottom: '6px' }}>
-            ⚠️ Software Disclaimer
+          <div>
+            <label className="block text-sm font-medium text-[#0F172A] mb-1">
+              Email address
+            </label>
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2D8C4A] focus:border-transparent"
+            />
           </div>
-          <div style={{ fontSize: '12px', color: '#92400E', lineHeight: '1.6' }}>
-            Sewer Labz is a reporting tool only and does not constitute professional advice.
-            Provided "AS IS" without warranty. You are solely responsible for data accuracy,
-            report validation, and regulatory compliance.
+
+          <div>
+            <label className="block text-sm font-medium text-[#0F172A] mb-1">
+              Company name
+            </label>
+            <input
+              type="text"
+              required
+              value={companyName}
+              onChange={(e) => setCompanyName(e.target.value)}
+              placeholder="LV Sewer Inspections"
+              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2D8C4A] focus:border-transparent"
+            />
           </div>
-        </div>
 
-        {/* Checkbox */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginBottom: '24px' }}>
-          <input
-            type="checkbox"
-            checked={agreed}
-            onChange={e => setAgreed(e.target.checked)}
-            style={{ marginTop: '2px', width: '16px', height: '16px', cursor: 'pointer', accentColor: '#2D8C4E' }}
-          />
-          <span style={{ fontSize: '13px', color: '#64748B', lineHeight: '1.5' }}>
-            I have read and agree to the{' '}
-            <span
-              onClick={() => setShowTerms(true)}
-              style={{ color: '#2D8C4E', cursor: 'pointer', fontWeight: 600, textDecoration: 'underline' }}
-            >
-              Terms & Conditions
-            </span>{' '}
-            and Software Disclaimer
-          </span>
-        </div>
+          <div>
+            <label className="block text-sm font-medium text-[#0F172A] mb-1">
+              Password
+            </label>
+            <input
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Min. 8 characters"
+              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2D8C4A] focus:border-transparent"
+            />
+          </div>
 
-        {/* Button */}
-        <button
-          onClick={handleSignup}
-          disabled={loading || !agreed}
-          style={{
-            width: '100%', height: '44px', borderRadius: '8px',
-            background: !agreed ? '#94A3B8' : loading ? '#94A3B8' : '#2D8C4E',
-            color: '#fff', border: 'none', fontSize: '15px',
-            fontWeight: 600, cursor: !agreed || loading ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {loading ? 'Creating account...' : 'Create free account — 7 days free'}
-        </button>
+          <div>
+            <label className="block text-sm font-medium text-[#0F172A] mb-1">
+              Confirm password
+            </label>
+            <input
+              type="password"
+              required
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="••••••••"
+              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2D8C4A] focus:border-transparent"
+            />
+          </div>
 
-        <div style={{ textAlign: 'center', marginTop: '20px', fontSize: '14px', color: '#64748B' }}>
+          {/* Terms */}
+          <div className="flex items-start gap-2">
+            <input
+              type="checkbox"
+              id="terms"
+              checked={agreed}
+              onChange={(e) => setAgreed(e.target.checked)}
+              className="mt-1 rounded"
+            />
+            <label htmlFor="terms" className="text-sm text-gray-600">
+              I have read and agree to the{' '}
+              <button
+                type="button"
+                className="text-[#2D8C4A] hover:underline font-medium"
+                onClick={() => alert('Terms & Conditions')}
+              >
+                Terms & Conditions
+              </button>{' '}
+              and{' '}
+              <button
+                type="button"
+                className="text-[#2D8C4A] hover:underline font-medium"
+                onClick={() => alert('Software Disclaimer')}
+              >
+                Software Disclaimer
+              </button>
+            </label>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-[#2D8C4A] hover:bg-[#246b3a] text-white font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? 'Creating account...' : 'Create free account'}
+          </button>
+        </form>
+
+        {/* Login link */}
+        <p className="text-center text-sm text-gray-500 mt-6">
           Already have an account?{' '}
-          <a href="/login" style={{ color: '#2D8C4E', fontWeight: 600, textDecoration: 'none' }}>Sign in</a>
-        </div>
-      </div>
+          <Link href="/login" className="text-[#2D8C4A] font-medium hover:underline">
+            Sign in
+          </Link>
+        </p>
 
-      {/* Terms Modal */}
-      {showTerms && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 100, padding: '20px',
-        }}>
-          <div style={{
-            background: '#fff', borderRadius: '16px', padding: '32px',
-            maxWidth: '560px', width: '100%', maxHeight: '80vh', overflowY: 'auto',
-          }}>
-            <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#0F2A4A', marginBottom: '16px' }}>
-              Terms & Conditions
-            </h2>
-            {[
-              { title: '1. Software Disclaimer', text: 'Sewer Labz is provided as a reporting tool only. It does not constitute professional engineering, legal, or regulatory advice.' },
-              { title: '2. No Warranty', text: 'The software is provided "AS IS" without warranty of any kind, express or implied.' },
-              { title: '3. User Responsibility', text: 'You are solely responsible for the accuracy of all data entered, validation of all reports generated, and compliance with all applicable laws and regulations.' },
-              { title: '4. Limitation of Liability', text: 'Sewer Labz shall not be liable for any direct, indirect, incidental, or consequential damages resulting from use of the software.' },
-              { title: '5. Indemnification', text: 'You agree to indemnify and hold harmless Sewer Labz from any claims arising from your use of the software.' },
-              { title: '6. Subscription & Billing', text: 'Subscriptions auto-renew monthly or annually. You can cancel anytime from your dashboard settings.' },
-              { title: '7. Auto-Renewal', text: 'By subscribing, you agree to automatic renewal at the stated price until cancelled.' },
-            ].map(({ title, text }) => (
-              <div key={title} style={{ marginBottom: '16px' }}>
-                <div style={{ fontSize: '14px', fontWeight: 600, color: '#0F2A4A', marginBottom: '4px' }}>{title}</div>
-                <div style={{ fontSize: '13px', color: '#64748B', lineHeight: '1.6' }}>{text}</div>
-              </div>
-            ))}
-            <button
-              onClick={() => setShowTerms(false)}
-              style={{
-                width: '100%', height: '42px', borderRadius: '8px',
-                background: '#2D8C4E', color: '#fff', border: 'none',
-                fontSize: '14px', fontWeight: 600, cursor: 'pointer', marginTop: '8px',
-              }}
-            >Close</button>
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   )
 }
