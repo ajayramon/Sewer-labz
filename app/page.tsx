@@ -1,192 +1,223 @@
 'use client'
-import { useState } from 'react'
 
-const stats = [
-  { label: 'Total Reports', value: '24', icon: '📄' },
-  { label: 'Completed This Month', value: '8', icon: '✅' },
-  { label: 'Drafts', value: '5', icon: '📝' },
-  { label: 'Templates Used', value: '3', icon: '📋' },
-]
-
-const reports = [
-  { title: 'Main St Inspection', job: 'JOB-001', client: 'City Council', date: '30 Mar 2026', status: 'Complete' },
-  { title: 'Harbor Rd Survey', job: 'JOB-002', client: 'Port Authority', date: '29 Mar 2026', status: 'Draft' },
-  { title: 'Oak Ave Pipeline', job: 'JOB-003', client: 'Waterworks Ltd', date: '28 Mar 2026', status: 'Draft' },
-  { title: 'Central Park Drain', job: 'JOB-004', client: 'Parks Dept', date: '27 Mar 2026', status: 'Complete' },
-  { title: 'West End Sewer', job: 'JOB-005', client: 'BuildCo', date: '26 Mar 2026', status: 'Archived' },
-]
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { auth } from '@/app/Lib/firebase'
+import { signOut } from 'firebase/auth'
+import Link from 'next/link'
 
 export default function Dashboard() {
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const router = useRouter()
+  const [user, setUser] = useState<any>(null)
+  const [stats, setStats] = useState({
+    totalReports: 0,
+    monthReports: 0,
+    drafts: 0,
+    templatesUsed: 0
+  })
+  const [reports, setReports] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (!user) {
+        router.push('/login')
+      } else {
+        setUser(user)
+        fetchDashboardData(user.uid)
+      }
+    })
+    return () => unsubscribe()
+  }, [router])
+
+  const fetchDashboardData = async (uid: string) => {
+    try {
+      const res = await fetch(`/api/dashboard?uid=${uid}`)
+      const data = await res.json()
+      if (data.stats) setStats(data.stats)
+      if (data.reports) setReports(data.reports)
+    } catch (err) {
+      console.error('Failed to fetch dashboard data', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleLogout = async () => {
+    await signOut(auth)
+    router.push('/login')
+  }
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', fontFamily: 'Inter, sans-serif', background: '#F8FAFC' }}>
+    <div className="min-h-screen bg-[#F8FAFC] flex">
 
       {/* Sidebar */}
-      <div style={{
-        width: sidebarOpen ? '240px' : '0',
-        minHeight: '100vh',
-        background: '#0F2A4A',
-        display: 'flex',
-        flexDirection: 'column',
-        transition: 'width 0.2s',
-        overflow: 'hidden',
-        flexShrink: 0,
-      }}>
-        <div style={{ padding: '24px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)', whiteSpace: 'nowrap' }}>
-          <div style={{ fontSize: '22px', fontWeight: 900 }}>
-            <span style={{ color: '#ffffff' }}>SEWER </span>
-            <span style={{ color: '#2D8C4E' }}>LABZ</span>
-          </div>
-          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', marginTop: '2px' }}>Inspection Platform</div>
+      <div className="w-64 bg-[#0F2A4A] min-h-screen flex flex-col p-6">
+        <div className="mb-8">
+          <h1 className="text-2xl font-black text-white">
+            SEWER <span className="text-[#2D8C4A]">LABZ</span>
+          </h1>
+          <p className="text-xs text-gray-400 mt-1">Professional Reports</p>
         </div>
 
-        <nav style={{ flex: 1, padding: '16px 12px' }}>
-          {[
-            { icon: '⊞', label: 'Dashboard', href: '/', active: true },
-            { icon: '📄', label: 'Reports', href: '/reports/new', active: false },
-            { icon: '📋', label: 'Templates', href: '/templates', active: false },
-            { icon: '⚙️', label: 'Settings', href: '#', active: false },
-          ].map(item => (
-            <div
-              key={item.label}
-              onClick={() => window.location.href = item.href}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '10px',
-                padding: '10px 12px', borderRadius: '8px', marginBottom: '4px',
-                background: item.active ? '#2D8C4E' : 'transparent',
-                color: item.active ? '#fff' : 'rgba(255,255,255,0.65)',
-                cursor: 'pointer', whiteSpace: 'nowrap', fontSize: '14px',
-                fontWeight: item.active ? 600 : 400,
-              }}
-            >
-              <span>{item.icon}</span>
-              <span>{item.label}</span>
-            </div>
-          ))}
+        <nav className="flex flex-col gap-2 flex-1">
+          <Link href="/" className="text-white bg-white/10 px-4 py-2.5 rounded-lg text-sm">
+            📊 Dashboard
+          </Link>
+          <Link href="/reports/new" className="text-gray-300 hover:text-white hover:bg-white/10 px-4 py-2.5 rounded-lg text-sm transition-colors">
+            📝 New Report
+          </Link>
+          <Link href="/templates" className="text-gray-300 hover:text-white hover:bg-white/10 px-4 py-2.5 rounded-lg text-sm transition-colors">
+            📋 Templates
+          </Link>
+          <Link href="/settings" className="text-gray-300 hover:text-white hover:bg-white/10 px-4 py-2.5 rounded-lg text-sm transition-colors">
+            ⚙️ Settings
+          </Link>
         </nav>
 
-        <div style={{ padding: '16px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{
-              width: '36px', height: '36px', borderRadius: '50%',
-              background: '#2D8C4E', display: 'flex', alignItems: 'center',
-              justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '14px', flexShrink: 0,
-            }}>AR</div>
+        {/* User info */}
+        <div className="border-t border-white/10 pt-4 mt-4">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-9 h-9 rounded-full bg-[#2D8C4A] flex items-center justify-center text-white font-bold text-sm">
+              {user?.displayName ? user.displayName[0].toUpperCase() : user?.email?.[0].toUpperCase()}
+            </div>
             <div>
-              <div style={{ color: '#fff', fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap' }}>Ajay Raymon</div>
-              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '11px' }}>Admin</div>
+              <p className="text-white text-xs font-medium">{user?.displayName || 'User'}</p>
+              <p className="text-gray-400 text-xs truncate w-36">{user?.email}</p>
             </div>
           </div>
-          <button style={{
-            marginTop: '12px', width: '100%', padding: '8px', borderRadius: '6px',
-            background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)',
-            fontSize: '12px', textAlign: 'center', cursor: 'pointer', border: 'none',
-          }}>Logout</button>
+          <button
+            onClick={handleLogout}
+            className="w-full text-red-400 hover:text-red-300 hover:bg-red-400/10 px-4 py-2 rounded-lg text-sm transition-colors text-left"
+          >
+            🚪 Logout
+          </button>
         </div>
       </div>
 
-      {/* Main content */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      {/* Main Content */}
+      <div className="flex-1 p-8">
 
-        {/* Top bar */}
-        <div style={{
-          background: '#fff', borderBottom: '1px solid #E2E8F0',
-          padding: '16px 24px', display: 'flex', alignItems: 'center',
-          justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 10,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <button onClick={() => setSidebarOpen(!sidebarOpen)} style={{
-              background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#64748B',
-            }}>☰</button>
-            <h1 style={{ fontSize: '18px', fontWeight: 700, color: '#0F2A4A', margin: 0 }}>Dashboard</h1>
+        {/* Header */}
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h2 className="text-2xl font-bold text-[#0F172A]">
+              Welcome back, {user?.displayName || 'there'} 👋
+            </h2>
+            <p className="text-gray-500 text-sm mt-1">Here's your inspection overview</p>
           </div>
-          <button onClick={() => window.location.href = '/reports/new'} style={{
-            background: '#2D8C4E', color: '#fff', border: 'none',
-            padding: '9px 18px', borderRadius: '8px', fontSize: '14px',
-            fontWeight: 600, cursor: 'pointer',
-          }}>+ New Report</button>
+          <Link
+            href="/reports/new"
+            className="bg-[#2D8C4A] hover:bg-[#246b3a] text-white font-semibold px-5 py-2.5 rounded-lg text-sm transition-colors"
+          >
+            + New Report
+          </Link>
         </div>
 
-        {/* Content */}
-        <div style={{ padding: '24px', flex: 1 }}>
+        {/* Stats Cards */}
+        <div className="grid grid-cols-4 gap-4 mb-8">
+          <div className="bg-white rounded-2xl shadow-sm p-5">
+            <p className="text-gray-500 text-xs font-medium uppercase tracking-wide">Total Reports</p>
+            <p className="text-3xl font-black text-[#0F2A4A] mt-1">
+              {loading ? '...' : stats.totalReports}
+            </p>
+            <p className="text-xs text-gray-400 mt-1">All time</p>
+          </div>
+          <div className="bg-white rounded-2xl shadow-sm p-5">
+            <p className="text-gray-500 text-xs font-medium uppercase tracking-wide">This Month</p>
+            <p className="text-3xl font-black text-[#2D8C4A] mt-1">
+              {loading ? '...' : stats.monthReports}
+            </p>
+            <p className="text-xs text-gray-400 mt-1">Reports created</p>
+          </div>
+          <div className="bg-white rounded-2xl shadow-sm p-5">
+            <p className="text-gray-500 text-xs font-medium uppercase tracking-wide">Drafts</p>
+            <p className="text-3xl font-black text-[#f59e0b] mt-1">
+              {loading ? '...' : stats.drafts}
+            </p>
+            <p className="text-xs text-gray-400 mt-1">In progress</p>
+          </div>
+          <div className="bg-white rounded-2xl shadow-sm p-5">
+            <p className="text-gray-500 text-xs font-medium uppercase tracking-wide">Templates Used</p>
+            <p className="text-3xl font-black text-[#0F2A4A] mt-1">
+              {loading ? '...' : stats.templatesUsed}
+            </p>
+            <p className="text-xs text-gray-400 mt-1">Custom templates</p>
+          </div>
+        </div>
 
-          {/* Stats */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
-            {stats.map(stat => (
-              <div key={stat.label} style={{
-                background: '#fff', border: '1px solid #E2E8F0',
-                borderRadius: '12px', padding: '20px',
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              }}>
-                <div>
-                  <div style={{ fontSize: '13px', color: '#64748B', marginBottom: '6px' }}>{stat.label}</div>
-                  <div style={{ fontSize: '28px', fontWeight: 700, color: '#0F2A4A' }}>{stat.value}</div>
-                </div>
-                <div style={{
-                  width: '44px', height: '44px', borderRadius: '10px',
-                  background: '#E8F5EE', display: 'flex',
-                  alignItems: 'center', justifyContent: 'center', fontSize: '20px',
-                }}>{stat.icon}</div>
-              </div>
-            ))}
+        {/* Recent Reports Table */}
+        <div className="bg-white rounded-2xl shadow-sm p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-bold text-[#0F172A]">Recent Reports</h3>
+            <Link href="/reports" className="text-sm text-[#2D8C4A] hover:underline">
+              View all
+            </Link>
           </div>
 
-          {/* Table */}
-          <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: '12px', overflow: 'hidden' }}>
-            <div style={{
-              padding: '16px 20px', borderBottom: '1px solid #E2E8F0',
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            }}>
-              <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#0F2A4A', margin: 0 }}>Recent Reports</h2>
-              <span style={{ fontSize: '13px', color: '#2D8C4E', cursor: 'pointer', fontWeight: 500 }}>View all →</span>
+          {loading ? (
+            <div className="text-center py-12 text-gray-400">Loading...</div>
+          ) : reports.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-4xl mb-3">📋</p>
+              <p className="text-gray-500 font-medium">No reports yet</p>
+              <p className="text-gray-400 text-sm mt-1">Create your first inspection report to get started</p>
+              <Link
+                href="/reports/new"
+                className="mt-4 inline-block bg-[#2D8C4A] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#246b3a] transition-colors"
+              >
+                + Create First Report
+              </Link>
             </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          ) : (
+            <table className="w-full">
               <thead>
-                <tr style={{ background: '#F8FAFC' }}>
-                  {['Report Title', 'Job #', 'Client', 'Date', 'Status', 'Actions'].map(h => (
-                    <th key={h} style={{
-                      padding: '12px 20px', textAlign: 'left', fontSize: '12px',
-                      fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em',
-                    }}>{h}</th>
-                  ))}
+                <tr className="border-b border-gray-100">
+                  <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wide pb-3">Client</th>
+                  <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wide pb-3">Location</th>
+                  <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wide pb-3">Date</th>
+                  <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wide pb-3">Status</th>
+                  <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wide pb-3">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {reports.map((r, i) => (
-                  <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
-                    <td style={{ padding: '14px 20px', fontSize: '14px', fontWeight: 600, color: '#0F2A4A' }}>{r.title}</td>
-                    <td style={{ padding: '14px 20px', fontSize: '14px', color: '#64748B' }}>{r.job}</td>
-                    <td style={{ padding: '14px 20px', fontSize: '14px', color: '#64748B' }}>{r.client}</td>
-                    <td style={{ padding: '14px 20px', fontSize: '14px', color: '#64748B' }}>{r.date}</td>
-                    <td style={{ padding: '14px 20px' }}>
-                      <span style={{
-                        padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 600,
-                        background: r.status === 'Complete' ? '#E8F5EE' : r.status === 'Draft' ? '#F1F5F9' : '#EFF6FF',
-                        color: r.status === 'Complete' ? '#2D8C4E' : r.status === 'Draft' ? '#64748B' : '#0F2A4A',
-                      }}>{r.status}</span>
+                {reports.map((report: any) => (
+                  <tr key={report.id} className="border-b border-gray-50 hover:bg-gray-50">
+                    <td className="py-3 text-sm font-medium text-[#0F172A]">{report.client_name || '-'}</td>
+                    <td className="py-3 text-sm text-gray-500">{report.location || '-'}</td>
+                    <td className="py-3 text-sm text-gray-500">
+                      {report.inspection_date ? new Date(report.inspection_date).toLocaleDateString() : '-'}
                     </td>
-                    <td style={{ padding: '14px 20px' }}>
-                      <div style={{ display: 'flex', gap: '6px' }}>
-                        {['View', 'Edit'].map(action => (
-                          <button key={action} style={{
-                            background: 'none', border: '1px solid #E2E8F0',
-                            borderRadius: '6px', padding: '5px 10px',
-                            fontSize: '12px', cursor: 'pointer', color: '#64748B', fontWeight: 500,
-                          }}>{action}</button>
-                        ))}
-                        <button style={{
-                          background: '#2D8C4E', border: 'none', borderRadius: '6px',
-                          padding: '5px 10px', fontSize: '12px', cursor: 'pointer',
-                          color: '#fff', fontWeight: 500,
-                        }}>PDF</button>
+                    <td className="py-3">
+                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                        report.status === 'COMPLETE' ? 'bg-green-100 text-green-700' :
+                        report.status === 'DRAFT' ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-gray-100 text-gray-600'
+                      }`}>
+                        {report.status}
+                      </span>
+                    </td>
+                    <td className="py-3">
+                      <div className="flex gap-2">
+                        <Link
+                          href={`/reports/${report.id}`}
+                          className="text-xs text-[#2D8C4A] hover:underline font-medium"
+                        >
+                          View
+                        </Link>
+                        <Link
+                          href={`/reports/${report.id}/edit`}
+                          className="text-xs text-[#0F2A4A] hover:underline font-medium"
+                        >
+                          Edit
+                        </Link>
                       </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          )}
         </div>
       </div>
     </div>
