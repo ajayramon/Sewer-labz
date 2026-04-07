@@ -57,7 +57,6 @@ const severityColors: Record<string, { bg: string; color: string }> = {
 export default function ReportBuilder() {
   const [title, setTitle] = useState('New Inspection Report')
   const [editingTitle, setEditingTitle] = useState(false)
-  const [saved, setSaved] = useState(false)
   const [generating, setGenerating] = useState(false)
 
   const [details, setDetails] = useState({
@@ -77,7 +76,7 @@ export default function ReportBuilder() {
     notes: '',
   })
 
-  const [propertyPhoto, setPropertyPhoto] = useState<string | null>(null)
+  const [propertyPhotos, setPropertyPhotos] = useState<string[]>([])
   const [defects, setDefects] = useState<Defect[]>([])
   const [dragOver, setDragOver] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'details' | 'system' | 'conditions'>('details')
@@ -97,14 +96,8 @@ export default function ReportBuilder() {
   const addDefect = () => {
     setDefects(p => [...p, {
       id: Date.now().toString(),
-      videoTime: '',
-      footage: '',
-      conditionType: 'Select Condition Type',
-      description: '',
-      severity: 'Minor',
-      narrative: '',
-      images: [],
-      expanded: true,
+      videoTime: '', footage: '', conditionType: 'Select Condition Type',
+      description: '', severity: 'Minor', narrative: '', images: [], expanded: true,
     }])
     setActiveTab('conditions')
   }
@@ -139,14 +132,21 @@ export default function ReportBuilder() {
       d.id === defectId ? { ...d, images: d.images.filter(i => i.id !== imageId) } : d
     ))
 
-  const handlePropertyPhoto = (files: FileList | null) => {
-    if (!files || !files[0]) return
-    setPropertyPhoto(URL.createObjectURL(files[0]))
+  const handlePropertyPhotos = (files: FileList | null) => {
+    if (!files) return
+    const remaining = 3 - propertyPhotos.length
+    const toAdd = Array.from(files).slice(0, remaining)
+    toAdd.forEach(f => {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        setPropertyPhotos(p => [...p, e.target?.result as string])
+      }
+      reader.readAsDataURL(f)
+    })
   }
 
-  const handleSave = () => {
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+  const removePropertyPhoto = (index: number) => {
+    setPropertyPhotos(p => p.filter((_, i) => i !== index))
   }
 
   const handleGeneratePDF = async () => {
@@ -156,7 +156,7 @@ export default function ReportBuilder() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          report: { ...details, title, propertyPhoto },
+          report: { ...details, title, propertyPhotos },
           defects,
         }),
       })
@@ -175,37 +175,23 @@ export default function ReportBuilder() {
   }
 
   const inputStyle = {
-    width: '100%',
-    height: '38px',
-    borderRadius: '6px',
-    border: '1px solid #E2E8F0',
-    padding: '0 12px',
-    fontSize: '13px',
-    color: '#0F172A',
-    outline: 'none',
-    boxSizing: 'border-box' as const,
-    background: '#F8FAFC',
+    width: '100%', height: '38px', borderRadius: '6px',
+    border: '1px solid #E2E8F0', padding: '0 12px',
+    fontSize: '13px', color: '#0F172A', outline: 'none',
+    boxSizing: 'border-box' as const, background: '#F8FAFC',
   }
 
   const labelStyle = {
-    display: 'block',
-    fontSize: '12px',
-    fontWeight: 600 as const,
-    color: '#64748B',
-    marginBottom: '4px',
-    textTransform: 'uppercase' as const,
-    letterSpacing: '0.05em',
+    display: 'block', fontSize: '12px', fontWeight: 600 as const,
+    color: '#64748B', marginBottom: '4px',
+    textTransform: 'uppercase' as const, letterSpacing: '0.05em',
   }
 
   const tabStyle = (active: boolean) => ({
-    padding: '8px 16px',
-    borderRadius: '6px',
-    fontSize: '13px',
-    fontWeight: 600 as const,
-    cursor: 'pointer' as const,
+    padding: '8px 16px', borderRadius: '6px', fontSize: '13px',
+    fontWeight: 600 as const, cursor: 'pointer' as const,
     background: active ? '#0F2A4A' : 'transparent',
-    color: active ? '#fff' : '#64748B',
-    border: 'none',
+    color: active ? '#fff' : '#64748B', border: 'none',
   })
 
   return (
@@ -213,23 +199,16 @@ export default function ReportBuilder() {
 
       {/* Top bar */}
       <div style={{
-        background: '#fff',
-        borderBottom: '1px solid #E2E8F0',
-        padding: '12px 24px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        position: 'sticky',
-        top: 0,
-        zIndex: 10,
+        background: '#fff', borderBottom: '1px solid #E2E8F0',
+        padding: '12px 24px', display: 'flex', alignItems: 'center',
+        justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 10,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <a href="/" style={{ color: '#64748B', textDecoration: 'none', fontSize: '14px' }}>← Reports</a>
           <span style={{ color: '#E2E8F0' }}>|</span>
           {editingTitle ? (
             <input
-              autoFocus
-              value={title}
+              autoFocus value={title}
               onChange={e => setTitle(e.target.value)}
               onBlur={() => setEditingTitle(false)}
               style={{ ...inputStyle, width: '280px', fontWeight: 600, fontSize: '15px' }}
@@ -242,17 +221,10 @@ export default function ReportBuilder() {
           )}
           <span style={{
             background: '#F1F5F9', color: '#64748B',
-            fontSize: '11px', fontWeight: 600,
-            padding: '3px 8px', borderRadius: '20px',
+            fontSize: '11px', fontWeight: 600, padding: '3px 8px', borderRadius: '20px',
           }}>DRAFT</span>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          {saved && <span style={{ fontSize: '13px', color: '#2D8C4E', fontWeight: 500 }}>✓ Saved</span>}
-          <button onClick={handleSave} style={{
-            background: 'none', border: '1px solid #E2E8F0',
-            borderRadius: '8px', padding: '8px 16px',
-            fontSize: '13px', cursor: 'pointer', color: '#64748B',
-          }}>Save Draft</button>
           <button
             onClick={handleGeneratePDF}
             disabled={generating}
@@ -287,13 +259,8 @@ export default function ReportBuilder() {
         {/* TAB 1 — Client & Site Info */}
         {activeTab === 'details' && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-
-            {/* Left column */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{
-                background: '#fff', border: '1px solid #E2E8F0',
-                borderRadius: '12px', padding: '20px',
-              }}>
+              <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: '12px', padding: '20px' }}>
                 <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#0F2A4A', margin: '0 0 16px' }}>
                   File & Client Information
                 </h3>
@@ -301,7 +268,7 @@ export default function ReportBuilder() {
                   { label: 'File Number', key: 'fileNumber', placeholder: 'McNeil/1590' },
                   { label: 'Client Name', key: 'clientName', placeholder: 'Justin McNeil' },
                   { label: 'Property Address', key: 'location', placeholder: '1590 Main St, Las Vegas NV' },
-                  { label: 'Buyer\'s Agent', key: 'buyersAgent', placeholder: 'Agent name' },
+                  { label: "Buyer's Agent", key: 'buyersAgent', placeholder: 'Agent name' },
                   { label: 'People Present', key: 'peoplePresent', placeholder: 'Client, Home Inspector, Buyers Agent' },
                 ].map(({ label, key, placeholder }) => (
                   <div key={key} style={{ marginBottom: '12px' }}>
@@ -319,42 +286,22 @@ export default function ReportBuilder() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
                   <div>
                     <label style={labelStyle}>Inspection Date</label>
-                    <input
-                      type="date"
-                      value={details.inspectedAt}
-                      onChange={e => updateDetail('inspectedAt', e.target.value)}
-                      style={inputStyle}
-                    />
+                    <input type="date" value={details.inspectedAt} onChange={e => updateDetail('inspectedAt', e.target.value)} style={inputStyle} />
                   </div>
                   <div>
                     <label style={labelStyle}>Time</label>
-                    <input
-                      type="time"
-                      value={details.inspectionTime}
-                      onChange={e => updateDetail('inspectionTime', e.target.value)}
-                      style={inputStyle}
-                    />
+                    <input type="time" value={details.inspectionTime} onChange={e => updateDetail('inspectionTime', e.target.value)} style={inputStyle} />
                   </div>
                 </div>
 
                 <div style={{ marginBottom: '12px' }}>
                   <label style={labelStyle}>Inspector Name</label>
-                  <input
-                    type="text"
-                    value={details.inspector}
-                    onChange={e => updateDetail('inspector', e.target.value)}
-                    placeholder="Inspector full name"
-                    style={inputStyle}
-                  />
+                  <input type="text" value={details.inspector} onChange={e => updateDetail('inspector', e.target.value)} placeholder="Inspector full name" style={inputStyle} />
                 </div>
 
                 <div style={{ marginBottom: '12px' }}>
                   <label style={labelStyle}>Building Occupied</label>
-                  <select
-                    value={details.buildingOccupied}
-                    onChange={e => updateDetail('buildingOccupied', e.target.value)}
-                    style={inputStyle}
-                  >
+                  <select value={details.buildingOccupied} onChange={e => updateDetail('buildingOccupied', e.target.value)} style={inputStyle}>
                     <option>Yes</option>
                     <option>No</option>
                     <option>Unknown</option>
@@ -363,73 +310,75 @@ export default function ReportBuilder() {
 
                 <div style={{ marginBottom: '12px' }}>
                   <label style={labelStyle}>Weather / Soil Conditions</label>
-                  <input
-                    type="text"
-                    value={details.weather}
-                    onChange={e => updateDetail('weather', e.target.value)}
-                    placeholder="e.g. Sunny, 90-100°F, ground dry at surface"
-                    style={inputStyle}
-                  />
+                  <input type="text" value={details.weather} onChange={e => updateDetail('weather', e.target.value)} placeholder="e.g. Sunny, 80-90°F, soil dry at the surface" style={inputStyle} />
                 </div>
               </div>
             </div>
 
-            {/* Right column — property photo */}
+            {/* Right column */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{
-                background: '#fff', border: '1px solid #E2E8F0',
-                borderRadius: '12px', padding: '20px',
-              }}>
-                <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#0F2A4A', margin: '0 0 16px' }}>
-                  Property Photo
+              <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: '12px', padding: '20px' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#0F2A4A', margin: '0 0 4px' }}>
+                  Property Photos
                 </h3>
-                {propertyPhoto ? (
-                  <div style={{ position: 'relative' }}>
-                    <img
-                      src={propertyPhoto}
-                      alt="Property"
-                      style={{ width: '100%', borderRadius: '8px', objectFit: 'cover', maxHeight: '240px' }}
-                    />
-                    <button
-                      onClick={() => setPropertyPhoto(null)}
-                      style={{
-                        position: 'absolute', top: '8px', right: '8px',
-                        background: '#DC2626', color: '#fff', border: 'none',
-                        borderRadius: '50%', width: '24px', height: '24px',
-                        cursor: 'pointer', fontSize: '14px', fontWeight: 700,
-                      }}
-                    >×</button>
-                  </div>
-                ) : (
+                <p style={{ fontSize: '12px', color: '#94A3B8', marginBottom: '12px' }}>
+                  Up to 3 photos — shown on cover page
+                </p>
+
+                {/* Upload zone */}
+                {propertyPhotos.length < 3 && (
                   <div
                     onClick={() => {
                       const input = document.createElement('input')
                       input.type = 'file'
                       input.accept = 'image/*'
-                      input.onchange = e => handlePropertyPhoto((e.target as HTMLInputElement).files)
+                      input.multiple = true
+                      input.onchange = e => handlePropertyPhotos((e.target as HTMLInputElement).files)
                       input.click()
                     }}
                     style={{
                       border: '2px dashed #E2E8F0', borderRadius: '8px',
-                      padding: '40px 20px', textAlign: 'center',
-                      cursor: 'pointer', background: '#F8FAFC',
+                      padding: '24px 20px', textAlign: 'center',
+                      cursor: 'pointer', background: '#F8FAFC', marginBottom: '12px',
                     }}
                   >
-                    <div style={{ fontSize: '32px', marginBottom: '8px' }}>🏠</div>
+                    <div style={{ fontSize: '24px', marginBottom: '6px' }}>🏠</div>
                     <div style={{ fontSize: '13px', color: '#64748B', fontWeight: 500 }}>
-                      Click to upload property photo
+                      Click to upload property photos
                     </div>
                     <div style={{ fontSize: '12px', color: '#94A3B8', marginTop: '4px' }}>
-                      Shown on cover page of report
+                      {propertyPhotos.length}/3 photos added
                     </div>
+                  </div>
+                )}
+
+                {/* Photo grid */}
+                {propertyPhotos.length > 0 && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
+                    {propertyPhotos.map((photo, index) => (
+                      <div key={index} style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', aspectRatio: '4/3' }}>
+                        <img src={photo} alt={`Property ${index + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        <button
+                          onClick={() => removePropertyPhoto(index)}
+                          style={{
+                            position: 'absolute', top: '4px', right: '4px',
+                            background: '#DC2626', color: '#fff', border: 'none',
+                            borderRadius: '50%', width: '20px', height: '20px',
+                            cursor: 'pointer', fontSize: '12px', fontWeight: 700,
+                          }}
+                        >×</button>
+                        <div style={{
+                          position: 'absolute', bottom: '4px', left: '4px',
+                          background: 'rgba(0,0,0,0.6)', color: '#fff',
+                          fontSize: '10px', padding: '2px 6px', borderRadius: '4px',
+                        }}>Photo {index + 1}</div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
 
-              <div style={{
-                background: '#fff', border: '1px solid #E2E8F0',
-                borderRadius: '12px', padding: '20px',
-              }}>
+              <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: '12px', padding: '20px' }}>
                 <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#0F2A4A', margin: '0 0 16px' }}>
                   General Notes / Comments
                 </h3>
@@ -438,10 +387,7 @@ export default function ReportBuilder() {
                   onChange={e => updateDetail('notes', e.target.value)}
                   placeholder="Add general notes, comments, or recommendations..."
                   rows={6}
-                  style={{
-                    ...inputStyle, height: 'auto',
-                    padding: '10px 12px', resize: 'vertical', lineHeight: '1.6',
-                  }}
+                  style={{ ...inputStyle, height: 'auto', padding: '10px 12px', resize: 'vertical', lineHeight: '1.6' }}
                 />
               </div>
             </div>
@@ -451,52 +397,31 @@ export default function ReportBuilder() {
         {/* TAB 2 — Sewer System Info */}
         {activeTab === 'system' && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-            <div style={{
-              background: '#fff', border: '1px solid #E2E8F0',
-              borderRadius: '12px', padding: '20px',
-            }}>
+            <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: '12px', padding: '20px' }}>
               <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#0F2A4A', margin: '0 0 16px' }}>
                 Sewer System Details
               </h3>
-
               <div style={{ marginBottom: '14px' }}>
                 <label style={labelStyle}>Cleanout Location</label>
                 <textarea
                   value={details.cleanoutLocation}
                   onChange={e => updateDetail('cleanoutLocation', e.target.value)}
-                  placeholder="e.g. Located at front side of structure, left to main entry. Cleanout cap and riser were ABS material."
+                  placeholder="e.g. Located at front side of structure, left to main entry."
                   rows={3}
                   style={{ ...inputStyle, height: 'auto', padding: '10px 12px', resize: 'vertical', lineHeight: '1.6' }}
                 />
               </div>
-
               <div style={{ marginBottom: '14px' }}>
                 <label style={labelStyle}>Sewer Video Link (YouTube)</label>
-                <input
-                  type="text"
-                  value={details.videoLink}
-                  onChange={e => updateDetail('videoLink', e.target.value)}
-                  placeholder="https://youtu.be/..."
-                  style={inputStyle}
-                />
+                <input type="text" value={details.videoLink} onChange={e => updateDetail('videoLink', e.target.value)} placeholder="https://youtu.be/..." style={inputStyle} />
               </div>
-
               <div style={{ marginBottom: '14px' }}>
                 <label style={labelStyle}>Camera Entry / Cleanout Type</label>
-                <input
-                  type="text"
-                  value={details.fileNumber}
-                  onChange={e => updateDetail('fileNumber', e.target.value)}
-                  placeholder='e.g. 4" Cast Iron'
-                  style={inputStyle}
-                />
+                <input type="text" value={details.fileNumber} onChange={e => updateDetail('fileNumber', e.target.value)} placeholder='e.g. 4" Cast Iron' style={inputStyle} />
               </div>
             </div>
 
-            <div style={{
-              background: '#fff', border: '1px solid #E2E8F0',
-              borderRadius: '12px', padding: '20px',
-            }}>
+            <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: '12px', padding: '20px' }}>
               <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#0F2A4A', margin: '0 0 16px' }}>
                 Pipe Materials Found
               </h3>
@@ -507,7 +432,7 @@ export default function ReportBuilder() {
                     onClick={() => toggleMaterial(material)}
                     style={{
                       padding: '6px 12px', borderRadius: '20px', fontSize: '12px',
-                      fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
+                      fontWeight: 600, cursor: 'pointer',
                       background: details.pipeMaterials.includes(material) ? '#0F2A4A' : '#F1F5F9',
                       color: details.pipeMaterials.includes(material) ? '#fff' : '#64748B',
                       border: details.pipeMaterials.includes(material) ? '1px solid #0F2A4A' : '1px solid #E2E8F0',
@@ -518,11 +443,7 @@ export default function ReportBuilder() {
                 ))}
               </div>
               {details.pipeMaterials.length > 0 && (
-                <div style={{
-                  marginTop: '16px', padding: '12px',
-                  background: '#F8FAFC', borderRadius: '8px',
-                  fontSize: '13px', color: '#0F2A4A',
-                }}>
+                <div style={{ marginTop: '16px', padding: '12px', background: '#F8FAFC', borderRadius: '8px', fontSize: '13px', color: '#0F2A4A' }}>
                   <strong>Selected:</strong> {details.pipeMaterials.join(', ')}
                 </div>
               )}
@@ -533,17 +454,13 @@ export default function ReportBuilder() {
         {/* TAB 3 — Pipe Conditions */}
         {activeTab === 'conditions' && (
           <div>
-            <div style={{
-              display: 'flex', justifyContent: 'space-between',
-              alignItems: 'center', marginBottom: '16px',
-            }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#0F2A4A', margin: 0 }}>
                 Pipe Conditions {defects.length > 0 && `(${defects.length})`}
               </h2>
               <button onClick={addDefect} style={{
                 background: '#2D8C4E', color: '#fff', border: 'none',
-                borderRadius: '8px', padding: '8px 16px',
-                fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+                borderRadius: '8px', padding: '8px 16px', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
               }}>+ Add Condition</button>
             </div>
 
@@ -553,16 +470,11 @@ export default function ReportBuilder() {
                 borderRadius: '12px', padding: '48px 24px', textAlign: 'center',
               }}>
                 <div style={{ fontSize: '32px', marginBottom: '12px' }}>🔍</div>
-                <div style={{ fontSize: '15px', fontWeight: 600, color: '#0F2A4A', marginBottom: '6px' }}>
-                  No conditions added yet
-                </div>
-                <div style={{ fontSize: '13px', color: '#94A3B8', marginBottom: '20px' }}>
-                  Add conditions observed during the inspection
-                </div>
+                <div style={{ fontSize: '15px', fontWeight: 600, color: '#0F2A4A', marginBottom: '6px' }}>No conditions added yet</div>
+                <div style={{ fontSize: '13px', color: '#94A3B8', marginBottom: '20px' }}>Add conditions observed during the inspection</div>
                 <button onClick={addDefect} style={{
                   background: '#2D8C4E', color: '#fff', border: 'none',
-                  borderRadius: '8px', padding: '10px 20px',
-                  fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+                  borderRadius: '8px', padding: '10px 20px', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
                 }}>Add First Condition</button>
               </div>
             )}
@@ -572,50 +484,24 @@ export default function ReportBuilder() {
                 background: '#fff', border: '1px solid #E2E8F0',
                 borderRadius: '12px', marginBottom: '16px', overflow: 'hidden',
               }}>
-                {/* Header */}
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: '10px',
                   padding: '12px 16px',
                   borderBottom: defect.expanded ? '1px solid #F1F5F9' : 'none',
-                  background: '#FAFAFA',
-                  flexWrap: 'wrap',
+                  background: '#FAFAFA', flexWrap: 'wrap',
                 }}>
-                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#0F2A4A', minWidth: '32px' }}>
-                    #{index + 1}
-                  </span>
-
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#0F2A4A', minWidth: '32px' }}>#{index + 1}</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <span style={{ fontSize: '12px', color: '#94A3B8', fontWeight: 600 }}>@</span>
-                    <input
-                      value={defect.videoTime}
-                      onChange={e => updateDefect(defect.id, 'videoTime', e.target.value)}
-                      placeholder="05:32"
-                      style={{ ...inputStyle, width: '70px' }}
-                      title="Video timestamp"
-                    />
+                    <input value={defect.videoTime} onChange={e => updateDefect(defect.id, 'videoTime', e.target.value)} placeholder="05:32" style={{ ...inputStyle, width: '70px' }} />
                   </div>
-
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <input
-                      value={defect.footage}
-                      onChange={e => updateDefect(defect.id, 'footage', e.target.value)}
-                      placeholder="13 ft"
-                      style={{ ...inputStyle, width: '70px' }}
-                      title="Footage distance"
-                    />
+                    <input value={defect.footage} onChange={e => updateDefect(defect.id, 'footage', e.target.value)} placeholder="13 ft" style={{ ...inputStyle, width: '70px' }} />
                     <span style={{ fontSize: '12px', color: '#94A3B8' }}>approx.</span>
                   </div>
-
-                  <select
-                    value={defect.conditionType}
-                    onChange={e => updateDefect(defect.id, 'conditionType', e.target.value)}
-                    style={{ ...inputStyle, flex: 1, minWidth: '200px' }}
-                  >
-                    {conditionTypes.map(ct => (
-                      <option key={ct} value={ct}>{ct}</option>
-                    ))}
+                  <select value={defect.conditionType} onChange={e => updateDefect(defect.id, 'conditionType', e.target.value)} style={{ ...inputStyle, flex: 1, minWidth: '200px' }}>
+                    {conditionTypes.map(ct => <option key={ct} value={ct}>{ct}</option>)}
                   </select>
-
                   <select
                     value={defect.severity}
                     onChange={e => updateDefect(defect.id, 'severity', e.target.value)}
@@ -626,22 +512,16 @@ export default function ReportBuilder() {
                       fontWeight: 600,
                     }}
                   >
-                    {['No Defect', 'Minor', 'Moderate', 'Major'].map(s => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
+                    {['No Defect', 'Minor', 'Moderate', 'Major'].map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
-
-                  <button
-                    onClick={() => toggleExpand(defect.id)}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', color: '#64748B' }}
-                  >{defect.expanded ? '▲' : '▼'}</button>
-                  <button
-                    onClick={() => deleteDefect(defect.id)}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', color: '#DC2626' }}
-                  >🗑</button>
+                  <button onClick={() => toggleExpand(defect.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', color: '#64748B' }}>
+                    {defect.expanded ? '▲' : '▼'}
+                  </button>
+                  <button onClick={() => deleteDefect(defect.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', color: '#DC2626' }}>
+                    🗑
+                  </button>
                 </div>
 
-                {/* Body */}
                 {defect.expanded && (
                   <div style={{ padding: '16px' }}>
                     <div style={{ marginBottom: '16px' }}>
@@ -649,7 +529,7 @@ export default function ReportBuilder() {
                       <textarea
                         value={defect.narrative}
                         onChange={e => updateDefect(defect.id, 'narrative', e.target.value)}
-                        placeholder="e.g. Root intrusion; unable to determine where roots are originating. Cable or hydro jet to cut. Recommend spot patch to prevent re-growth."
+                        placeholder="e.g. Root intrusion; unable to determine where roots are originating. Cable or hydro jet to cut."
                         rows={3}
                         style={{ ...inputStyle, height: 'auto', padding: '10px 12px', resize: 'vertical', lineHeight: '1.6' }}
                       />
@@ -716,9 +596,8 @@ export default function ReportBuilder() {
 
             {defects.length > 0 && (
               <button onClick={addDefect} style={{
-                width: '100%', padding: '14px',
-                border: '2px dashed #E2E8F0', borderRadius: '12px',
-                background: 'none', cursor: 'pointer',
+                width: '100%', padding: '14px', border: '2px dashed #E2E8F0',
+                borderRadius: '12px', background: 'none', cursor: 'pointer',
                 fontSize: '14px', color: '#64748B', fontWeight: 500,
               }}>+ Add Another Condition</button>
             )}
