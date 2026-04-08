@@ -14,6 +14,8 @@ export default function SettingsPage() {
   const [companyName, setCompanyName] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const subscriptionPlan = 'Free Plan'
+  const planTag = '5 reports per month'
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -128,15 +130,24 @@ export default function SettingsPage() {
           </div>
 
           {/* User Info Card */}
-          <div className="bg-white rounded-2xl shadow-sm p-6 mb-6 flex items-center gap-4">
-            <div className="w-16 h-16 rounded-full bg-[#0F2A4A] flex items-center justify-center text-white text-2xl font-bold">
-              {user?.displayName ? user.displayName[0].toUpperCase() : user?.email?.[0].toUpperCase()}
+          <div className="bg-white rounded-2xl shadow-sm p-6 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 rounded-full bg-[#0F2A4A] flex items-center justify-center text-white text-2xl font-bold">
+                {user?.displayName ? user.displayName[0].toUpperCase() : user?.email?.[0].toUpperCase()}
+              </div>
+              <div>
+                <h3 className="font-bold text-[#0F172A] text-lg">{user?.displayName || 'User'}</h3>
+                <p className="text-gray-500 text-sm">{user?.email}</p>
+                <p className="text-xs text-gray-400 mt-2">{subscriptionPlan} • {planTag}</p>
+              </div>
             </div>
-            <div>
-              <h3 className="font-bold text-[#0F172A] text-lg">{user?.displayName || 'User'}</h3>
-              <p className="text-gray-500 text-sm">{user?.email}</p>
-              <span className="text-xs bg-[#2D8C4A]/10 text-[#2D8C4A] px-2 py-0.5 rounded-full font-medium">Free Plan</span>
-            </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('subscription')}
+              className="inline-flex items-center justify-center rounded-full bg-[#2D8C4A] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#246b3a]"
+            >
+              Subscribe
+            </button>
           </div>
 
           {/* Tabs */}
@@ -281,19 +292,35 @@ export default function SettingsPage() {
             <div className="bg-white rounded-2xl shadow-sm p-6">
               <h3 className="font-bold text-[#0F172A] mb-4">Subscription & Billing</h3>
 
+              <div className="bg-[#F8FAFC] border border-gray-200 rounded-2xl p-5 mb-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div>
+                    <p className="text-sm uppercase tracking-wide text-[#0F172A] font-semibold">Need more reports?</p>
+                    <p className="text-sm text-gray-600 mt-2">Upgrade to remove limits, add your team, and get priority support.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('subscription')}
+                    className="rounded-full bg-[#2D8C4A] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#246b3a]"
+                  >
+                    Subscribe now
+                  </button>
+                </div>
+              </div>
+
               {/* Current Plan */}
               <div className="border border-[#2D8C4A] rounded-xl p-4 mb-6 bg-[#2D8C4A]/5">
                 <div className="flex justify-between items-center">
                   <div>
-                    <p className="font-bold text-[#0F172A]">Free Plan</p>
-                    <p className="text-sm text-gray-500">Up to 5 reports per month</p>
+                    <p className="font-bold text-[#0F172A]">{subscriptionPlan}</p>
+                    <p className="text-sm text-gray-500">{planTag}</p>
                   </div>
                   <span className="bg-[#2D8C4A] text-white text-xs px-3 py-1 rounded-full font-medium">Active</span>
                 </div>
               </div>
 
               {/* Upgrade Plans */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="border border-gray-200 rounded-xl p-4">
                   <h4 className="font-bold text-[#0F172A] mb-1">Starter</h4>
                   <p className="text-2xl font-black text-[#0F2A4A]">$29<span className="text-sm font-normal text-gray-500">/mo</span></p>

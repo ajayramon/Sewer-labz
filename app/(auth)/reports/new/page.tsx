@@ -45,13 +45,17 @@ const pipeMaterials = [
   'HDPE',
   'Galvanized Steel',
   'Copper',
+  'Lead',
+  'Stainless Steel',
+  'Standard Dimensional Ratio (SDR)',
 ]
 
 const severityColors: Record<string, { bg: string; color: string }> = {
   'No Defect': { bg: '#F0FDF4', color: '#16A34A' },
-  Minor: { bg: '#FFFBEB', color: '#D97706' },
-  Moderate: { bg: '#FFF7ED', color: '#EA580C' },
-  Major: { bg: '#FEF2F2', color: '#DC2626' },
+  'Minor': { bg: '#FFFBEB', color: '#D97706' },
+  'Moderate': { bg: '#FFF7ED', color: '#EA580C' },
+  'Major': { bg: '#FEF2F2', color: '#DC2626' },
+  'Suggested Maintenance': { bg: '#F3F4F6', color: '#6B7280' },
 }
 
 export default function ReportBuilder() {
@@ -72,14 +76,16 @@ export default function ReportBuilder() {
     weather: '',
     cleanoutLocation: '',
     pipeMaterials: [] as string[],
-    videoLink: '',
+    videoLinks: ['', '', '', ''] as string[],
     notes: '',
+    endOfReportComments: '',
+    correctiveActions: [] as { type: string; description: string }[],
   })
 
   const [propertyPhotos, setPropertyPhotos] = useState<string[]>([])
   const [defects, setDefects] = useState<Defect[]>([])
   const [dragOver, setDragOver] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'details' | 'system' | 'conditions'>('details')
+  const [activeTab, setActiveTab] = useState<'details' | 'system' | 'conditions' | 'actions'>('details')
 
   const updateDetail = (k: string, v: string) =>
     setDetails(p => ({ ...p, [k]: v }))
@@ -156,7 +162,12 @@ export default function ReportBuilder() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          report: { ...details, title, propertyPhotos },
+          report: {
+            ...details,
+            videoLinks: details.videoLinks.filter(link => link.trim() !== ''),
+            title,
+            propertyPhotos
+          },
           defects,
         }),
       })
@@ -252,6 +263,9 @@ export default function ReportBuilder() {
         <button style={tabStyle(activeTab === 'conditions')} onClick={() => setActiveTab('conditions')}>
           🔍 Pipe Conditions {defects.length > 0 && `(${defects.length})`}
         </button>
+        <button style={tabStyle(activeTab === 'actions')} onClick={() => setActiveTab('actions')}>
+          ✅ Corrective Actions
+        </button>
       </div>
 
       <div style={{ padding: '24px', maxWidth: '1000px', margin: '0 auto' }}>
@@ -289,8 +303,67 @@ export default function ReportBuilder() {
                     <input type="date" value={details.inspectedAt} onChange={e => updateDetail('inspectedAt', e.target.value)} style={inputStyle} />
                   </div>
                   <div>
-                    <label style={labelStyle}>Time</label>
-                    <input type="time" value={details.inspectionTime} onChange={e => updateDetail('inspectionTime', e.target.value)} style={inputStyle} />
+                    <label style={labelStyle}>Inspection Time</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="text"
+                        value={details.inspectionTime.split(':')[0] || ''}
+                        onChange={e => {
+                          const hours = e.target.value.replace(/\D/g, '').slice(0, 2)
+                          const currentTime = details.inspectionTime.split(':')
+                          const newTime = `${hours}:${currentTime[1] || '00'}`
+                          updateDetail('inspectionTime', newTime)
+                        }}
+                        placeholder="HH"
+                        style={{ width: '40px', height: '38px', borderRadius: '6px', border: '1px solid #E2E8F0', padding: '0 8px', fontSize: '13px', textAlign: 'center' }}
+                      />
+                      <span style={{ fontSize: '16px', fontWeight: 'bold' }}>:</span>
+                      <input
+                        type="text"
+                        value={details.inspectionTime.split(':')[1]?.split(' ')[0] || ''}
+                        onChange={e => {
+                          const minutes = e.target.value.replace(/\D/g, '').slice(0, 2)
+                          const currentTime = details.inspectionTime.split(':')
+                          const ampm = currentTime[1]?.split(' ')[1] || 'AM'
+                          const newTime = `${currentTime[0] || '00'}:${minutes} ${ampm}`
+                          updateDetail('inspectionTime', newTime)
+                        }}
+                        placeholder="MM"
+                        style={{ width: '40px', height: '38px', borderRadius: '6px', border: '1px solid #E2E8F0', padding: '0 8px', fontSize: '13px', textAlign: 'center' }}
+                      />
+                      <div style={{ display: 'flex', gap: '2px' }}>
+                        <button
+                          onClick={() => {
+                            const time = details.inspectionTime.split(' ')
+                            updateDetail('inspectionTime', `${time[0]} AM`)
+                          }}
+                          style={{
+                            padding: '6px 8px',
+                            border: '1px solid #E2E8F0',
+                            background: details.inspectionTime.includes('AM') ? '#2D8C4E' : '#F8FAFC',
+                            color: details.inspectionTime.includes('AM') ? '#fff' : '#64748B',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            cursor: 'pointer'
+                          }}
+                        >AM</button>
+                        <button
+                          onClick={() => {
+                            const time = details.inspectionTime.split(' ')
+                            updateDetail('inspectionTime', `${time[0]} PM`)
+                          }}
+                          style={{
+                            padding: '6px 8px',
+                            border: '1px solid #E2E8F0',
+                            background: details.inspectionTime.includes('PM') ? '#2D8C4E' : '#F8FAFC',
+                            color: details.inspectionTime.includes('PM') ? '#fff' : '#64748B',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            cursor: 'pointer'
+                          }}
+                        >PM</button>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -412,8 +485,22 @@ export default function ReportBuilder() {
                 />
               </div>
               <div style={{ marginBottom: '14px' }}>
-                <label style={labelStyle}>Sewer Video Link (YouTube)</label>
-                <input type="text" value={details.videoLink} onChange={e => updateDetail('videoLink', e.target.value)} placeholder="https://youtu.be/..." style={inputStyle} />
+                <label style={labelStyle}>Sewer Video Links (YouTube)</label>
+                {[0, 1, 2, 3].map(index => (
+                  <div key={index} style={{ marginBottom: '8px' }}>
+                    <input
+                      type="text"
+                      value={details.videoLinks[index] || ''}
+                      onChange={e => {
+                        const newLinks = [...details.videoLinks]
+                        newLinks[index] = e.target.value
+                        setDetails(p => ({ ...p, videoLinks: newLinks }))
+                      }}
+                      placeholder={`Link ${index + 1}: https://youtu.be/...`}
+                      style={inputStyle}
+                    />
+                  </div>
+                ))}
               </div>
               <div style={{ marginBottom: '14px' }}>
                 <label style={labelStyle}>Camera Entry / Cleanout Type</label>
@@ -512,7 +599,7 @@ export default function ReportBuilder() {
                       fontWeight: 600,
                     }}
                   >
-                    {['No Defect', 'Minor', 'Moderate', 'Major'].map(s => <option key={s} value={s}>{s}</option>)}
+                    {['No Defect', 'Minor', 'Moderate', 'Major', 'Suggested Maintenance'].map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                   <button onClick={() => toggleExpand(defect.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', color: '#64748B' }}>
                     {defect.expanded ? '▲' : '▼'}
@@ -601,6 +688,125 @@ export default function ReportBuilder() {
                 fontSize: '14px', color: '#64748B', fontWeight: 500,
               }}>+ Add Another Condition</button>
             )}
+          </div>
+        )}
+
+        {/* TAB 4 — Corrective Actions */}
+        {activeTab === 'actions' && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#0F2A4A', margin: 0 }}>
+                Corrective Actions & Recommendations
+              </h2>
+              <button
+                onClick={() => {
+                  setDetails(p => ({
+                    ...p,
+                    correctiveActions: [...p.correctiveActions, { type: '', description: '' }]
+                  }))
+                }}
+                style={{
+                  background: '#2D8C4E', color: '#fff', border: 'none',
+                  borderRadius: '8px', padding: '8px 16px', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+                }}
+              >+ Add Action</button>
+            </div>
+
+            {details.correctiveActions.length === 0 && (
+              <div style={{
+                background: '#fff', border: '2px dashed #E2E8F0',
+                borderRadius: '12px', padding: '48px 24px', textAlign: 'center',
+              }}>
+                <div style={{ fontSize: '32px', marginBottom: '12px' }}>✅</div>
+                <div style={{ fontSize: '15px', fontWeight: 600, color: '#0F2A4A', marginBottom: '6px' }}>No corrective actions added yet</div>
+                <div style={{ fontSize: '13px', color: '#94A3B8', marginBottom: '20px' }}>Add recommended corrective actions and repairs</div>
+                <button
+                  onClick={() => {
+                    setDetails(p => ({
+                      ...p,
+                      correctiveActions: [{ type: 'Recommended Repair', description: 'Full evaluation and/or corrections with written findings and costs to cure by a competent licensed plumbing contractor.' }]
+                    }))
+                  }}
+                  style={{
+                    background: '#2D8C4E', color: '#fff', border: 'none',
+                    borderRadius: '8px', padding: '10px 20px', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+                  }}
+                >Add Default Actions</button>
+              </div>
+            )}
+
+            {details.correctiveActions.map((action, index) => (
+              <div key={index} style={{
+                background: '#fff', border: '1px solid #E2E8F0',
+                borderRadius: '12px', marginBottom: '16px', padding: '20px',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                  <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#0F2A4A', margin: 0 }}>
+                    Action #{index + 1}
+                  </h3>
+                  <button
+                    onClick={() => {
+                      setDetails(p => ({
+                        ...p,
+                        correctiveActions: p.correctiveActions.filter((_, i) => i !== index)
+                      }))
+                    }}
+                    style={{
+                      background: '#DC2626', color: '#fff', border: 'none',
+                      borderRadius: '6px', padding: '4px 8px', fontSize: '12px', cursor: 'pointer',
+                    }}
+                  >Remove</button>
+                </div>
+
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={labelStyle}>Action Type</label>
+                  <select
+                    value={action.type}
+                    onChange={e => {
+                      const newActions = [...details.correctiveActions]
+                      newActions[index].type = e.target.value
+                      setDetails(p => ({ ...p, correctiveActions: newActions }))
+                    }}
+                    style={inputStyle}
+                  >
+                    <option value="">Select Action Type</option>
+                    <option value="Immediate Repair">Immediate Repair</option>
+                    <option value="Scheduled Maintenance">Scheduled Maintenance</option>
+                    <option value="Further Evaluation">Further Evaluation</option>
+                    <option value="Monitor Condition">Monitor Condition</option>
+                    <option value="Professional Consultation">Professional Consultation</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={labelStyle}>Description</label>
+                  <textarea
+                    value={action.description}
+                    onChange={e => {
+                      const newActions = [...details.correctiveActions]
+                      newActions[index].description = e.target.value
+                      setDetails(p => ({ ...p, correctiveActions: newActions }))
+                    }}
+                    placeholder="Describe the recommended corrective action..."
+                    rows={3}
+                    style={{ ...inputStyle, height: 'auto', padding: '10px 12px', resize: 'vertical', lineHeight: '1.6' }}
+                  />
+                </div>
+              </div>
+            ))}
+
+            <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: '12px', padding: '20px', marginTop: '24px' }}>
+              <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#0F2A4A', margin: '0 0 16px' }}>
+                End of Report Comments
+              </h3>
+              <textarea
+                value={details.endOfReportComments}
+                onChange={e => updateDetail('endOfReportComments', e.target.value)}
+                placeholder="Add final comments or recommendations for the end of the report..."
+                rows={4}
+                style={{ ...inputStyle, height: 'auto', padding: '10px 12px', resize: 'vertical', lineHeight: '1.6' }}
+              />
+            </div>
           </div>
         )}
       </div>

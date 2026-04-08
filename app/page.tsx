@@ -15,8 +15,22 @@ export default function Dashboard() {
     drafts: 0,
     templatesUsed: 0
   })
+  const [subscription, setSubscription] = useState<any>(null)
   const [reports, setReports] = useState([])
   const [loading, setLoading] = useState(true)
+
+  const trialEndsAt = subscription?.trial_ends_at ? new Date(subscription.trial_ends_at) : null
+  const trialDaysLeft = trialEndsAt ? Math.max(0, Math.ceil((trialEndsAt.getTime() - Date.now()) / 86400000)) : null
+  const trialLabel = subscription?.plan === 'TRIAL'
+    ? trialDaysLeft !== null
+      ? `${trialDaysLeft} day${trialDaysLeft === 1 ? '' : 's'} left`
+      : 'Trial active'
+    : subscription?.plan
+      ? `${subscription.plan.toUpperCase()} plan`
+      : 'Free Plan'
+  const trialDescription = subscription?.plan === 'TRIAL'
+    ? 'Your free trial is active. Subscribe now to keep generating reports without interruption.'
+    : 'You are currently on the free plan. Upgrade anytime to unlock more reports and priority support.'
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
@@ -35,6 +49,7 @@ export default function Dashboard() {
       const res = await fetch(`/api/dashboard?uid=${uid}`)
       const data = await res.json()
       if (data.stats) setStats(data.stats)
+      if (data.subscription) setSubscription(data.subscription)
       if (data.reports) setReports(data.reports)
     } catch (err) {
       console.error('Failed to fetch dashboard data', err)
@@ -112,6 +127,51 @@ export default function Dashboard() {
           >
             + New Report
           </Link>
+        </div>
+
+        {/* Trial Summary */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_0.9fr] gap-4 mb-8">
+          <div className="bg-white rounded-2xl shadow-sm p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-wide text-[#0F172A]">Free Trial</p>
+                <p className="mt-3 text-3xl font-black text-[#2D8C4A]">
+                  {trialLabel}
+                </p>
+                <p className="text-sm text-gray-500 mt-2 max-w-xl">
+                  {trialDescription}
+                </p>
+              </div>
+              <div className="flex flex-col sm:items-end gap-3">
+                <Link
+                  href="/settings"
+                  className="inline-flex items-center justify-center rounded-full bg-[#2D8C4A] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#246b3a]"
+                >
+                  Subscribe
+                </Link>
+                <p className="text-xs text-gray-400">
+                  {subscription?.status ? `Status: ${subscription.status}` : 'Status: Free'}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-[#F8FAFC] rounded-2xl shadow-sm p-6 border border-gray-200">
+            <p className="text-sm font-semibold uppercase tracking-wide text-[#0F172A]">What’s been done</p>
+            <div className="mt-4 space-y-3 text-sm text-gray-600">
+              <div className="flex items-center justify-between rounded-xl bg-white p-4 border border-gray-200">
+                <span>Reports created this month</span>
+                <strong className="text-[#0F172A]">{stats.monthReports}</strong>
+              </div>
+              <div className="flex items-center justify-between rounded-xl bg-white p-4 border border-gray-200">
+                <span>Open drafts</span>
+                <strong className="text-[#0F172A]">{stats.drafts}</strong>
+              </div>
+              <div className="flex items-center justify-between rounded-xl bg-white p-4 border border-gray-200">
+                <span>Templates used</span>
+                <strong className="text-[#0F172A]">{stats.templatesUsed}</strong>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Stats Cards */}

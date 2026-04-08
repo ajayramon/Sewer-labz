@@ -52,11 +52,12 @@ export default function LoginPage() {
           <h1 className="text-3xl font-black text-[#0F2A4A]">
             SEWER <span className="text-[#2D8C4A]">LABZ</span>
           </h1>
-          <p className="text-sm text-gray-500 mt-1">Professional Sewer Inspection Reports</p>
+          <p className="text-sm text-gray-500 mt-1">Access inspection reports, PDF exports, and reporting templates.</p>
         </div>
 
         {/* Title */}
-        <h2 className="text-xl font-bold text-[#0F172A] mb-6">Sign in to your account</h2>
+        <h2 className="text-xl font-bold text-[#0F172A] mb-2">Sign in to your account</h2>
+        <p className="text-sm text-gray-500 mb-6">New users can create an account and start a free trial.</p>
 
         {/* Error */}
         {error && (
@@ -100,9 +101,7 @@ export default function LoginPage() {
               <input type="checkbox" className="rounded" />
               Remember me
             </label>
-            <Link href="/forgot-password" className="text-sm text-[#2D8C4A] hover:underline">
-              Forgot password?
-            </Link>
+            <span className="text-sm text-gray-400">Forgot password? Contact support.</span>
           </div>
 
           <button

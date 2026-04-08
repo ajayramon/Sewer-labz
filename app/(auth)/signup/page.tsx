@@ -15,11 +15,13 @@ export default function SignupPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [agreed, setAgreed] = useState(false)
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(false)
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setSuccess('')
 
     if (password !== confirmPassword) {
       setError('Passwords do not match.')
@@ -57,7 +59,8 @@ export default function SignupPage() {
         })
       })
 
-      router.push('/')
+      setSuccess('Account created successfully. Please sign in to continue.')
+      router.push('/login')
     } catch (err: any) {
       switch (err.code) {
         case 'auth/email-already-in-use':
@@ -86,12 +89,19 @@ export default function SignupPage() {
           <h1 className="text-3xl font-black text-[#0F2A4A]">
             SEWER <span className="text-[#2D8C4A]">LABZ</span>
           </h1>
-          <p className="text-sm text-gray-500 mt-1">Create your free account — no card required</p>
+          <p className="text-sm text-gray-500 mt-1">Start your free trial today with no credit card required.</p>
         </div>
 
         {/* Title */}
-        <h2 className="text-xl font-bold text-[#0F172A] mb-6">Create your account</h2>
+        <h2 className="text-xl font-bold text-[#0F172A] mb-2">Create your account</h2>
+        <p className="text-sm text-gray-500 mb-6">Sign up and then log in to access your dashboard, reports, and templates.</p>
 
+        {/* Success */}
+        {success && (
+          <div className="bg-green-50 border border-green-200 text-green-700 rounded-lg px-4 py-3 mb-4 text-sm">
+            {success}
+          </div>
+        )}
         {/* Error */}
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-600 rounded-lg px-4 py-3 mb-4 text-sm">
@@ -193,9 +203,9 @@ export default function SignupPage() {
               <button
                 type="button"
                 className="text-[#2D8C4A] hover:underline font-medium"
-                onClick={() => alert('Software Disclaimer')}
+                onClick={() => alert('SOFTWARE DISCLAIMER')}
               >
-                Software Disclaimer
+                SOFTWARE DISCLAIMER
               </button>
             </label>
           </div>

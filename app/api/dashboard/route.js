@@ -64,6 +64,12 @@ export async function GET(req: NextRequest) {
       .select('*', { count: 'exact', head: true })
       .eq('company_id', user.company_id)
 
+    const { data: subscription } = await supabase
+      .from('subscriptions')
+      .select('plan, status, trial_ends_at, current_period_end')
+      .eq('company_id', user.company_id)
+      .maybeSingle()
+
     return NextResponse.json({
       stats: {
         totalReports: totalReports || 0,
@@ -71,6 +77,7 @@ export async function GET(req: NextRequest) {
         drafts: drafts || 0,
         templatesUsed: templatesUsed || 0
       },
+      subscription: subscription || null,
       reports: reports || []
     })
 
