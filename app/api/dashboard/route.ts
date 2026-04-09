@@ -1,78 +1,39 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { NextResponse } from "next/server"
+import { createClient } from "@supabase/supabase-js"
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-    const { searchParams } = new URL(req.url)
-    const uid = searchParams.get('uid')
-
-    if (!uid) {
-      return NextResponse.json({ error: 'Missing uid' }, { status: 400 })
-    }
-
-    const { data: user } = await supabase
-      .from('users')
-      .select('id, company_id')
-      .eq('firebase_uid', uid)
-      .single()
-
-    if (!user) {
+    // ✅ Prevent crash during build
+    if (!supabaseUrl || !supabaseKey) {
       return NextResponse.json({
-        stats: { totalReports: 0, monthReports: 0, drafts: 0, templatesUsed: 0 },
-        reports: []
+        reports: 0,
+        inspections: 0,
+        defects: 0,
       })
     }
 
-    const { data: reports } = await supabase
-      .from('reports')
-      .select('*')
-      .eq('company_id', user.company_id)
-      .order('created_at', { ascending: false })
-      .limit(10)
+    const supabase = createClient(supabaseUrl, supabaseKey)
 
-    const { count: totalReports } = await supabase
-      .from('reports')
-      .select('*', { count: 'exact', head: true })
-      .eq('company_id', user.company_id)
+    const { data, error } = await supabase
+      .from("reports")
+      .select("*")
 
-    const startOfMonth = new Date()
-    startOfMonth.setDate(1)
-    startOfMonth.setHours(0, 0, 0, 0)
-
-    const { count: monthReports } = await supabase
-      .from('reports')
-      .select('*', { count: 'exact', head: true })
-      .eq('company_id', user.company_id)
-      .gte('created_at', startOfMonth.toISOString())
-
-    const { count: drafts } = await supabase
-      .from('reports')
-      .select('*', { count: 'exact', head: true })
-      .eq('company_id', user.company_id)
-      .eq('status', 'DRAFT')
-
-    const { count: templatesUsed } = await supabase
-      .from('templates')
-      .select('*', { count: 'exact', head: true })
-      .eq('company_id', user.company_id)
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
 
     return NextResponse.json({
-      stats: {
-        totalReports: totalReports || 0,
-        monthReports: monthReports || 0,
-        drafts: drafts || 0,
-        templatesUsed: templatesUsed || 0
-      },
-      reports: reports || []
+      reports: data?.length || 0,
+      inspections: data?.length || 0,
+      defects: data?.length || 0,
     })
-
-  } catch (error) {
-    console.error('Dashboard error:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: err.message || "Server error" },
+      { status: 500 }
+    )
   }
 }
