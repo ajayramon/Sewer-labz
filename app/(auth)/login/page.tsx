@@ -2,11 +2,12 @@
 
 export const dynamic = "force-dynamic"
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import { signInWithEmailAndPassword } from 'firebase/auth'
-import { auth } from '@/app/Lib/firebase'
+const handleLogin = async (e: any) => {
+  e.preventDefault()
+
+  // ✅ Fake login (frontend only)
+  router.push('/')
+}
 
 export default function LoginPage() {
   const router = useRouter()
