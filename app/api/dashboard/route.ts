@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const getSupabase = () => createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
-
 export async function GET(req: NextRequest) {
   try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+
     const { searchParams } = new URL(req.url)
     const uid = searchParams.get('uid')
 
@@ -15,7 +15,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Missing uid' }, { status: 400 })
     }
 
-    // Get user from database
     const { data: user } = await supabase
       .from('users')
       .select('id, company_id')
@@ -29,7 +28,6 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    // Get all reports
     const { data: reports } = await supabase
       .from('reports')
       .select('*')
@@ -37,7 +35,6 @@ export async function GET(req: NextRequest) {
       .order('created_at', { ascending: false })
       .limit(10)
 
-    // Get stats
     const { count: totalReports } = await supabase
       .from('reports')
       .select('*', { count: 'exact', head: true })
@@ -64,12 +61,6 @@ export async function GET(req: NextRequest) {
       .select('*', { count: 'exact', head: true })
       .eq('company_id', user.company_id)
 
-    const { data: subscription } = await supabase
-      .from('subscriptions')
-      .select('plan, status, trial_ends_at, current_period_end')
-      .eq('company_id', user.company_id)
-      .maybeSingle()
-
     return NextResponse.json({
       stats: {
         totalReports: totalReports || 0,
@@ -77,7 +68,6 @@ export async function GET(req: NextRequest) {
         drafts: drafts || 0,
         templatesUsed: templatesUsed || 0
       },
-      subscription: subscription || null,
       reports: reports || []
     })
 
