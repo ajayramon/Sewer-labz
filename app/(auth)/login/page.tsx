@@ -1,130 +1,59 @@
 'use client'
 
-export const dynamic = "force-dynamic"
-
-const handleLogin = async (e: any) => {
-  e.preventDefault()
-
-  // ✅ Fake login (frontend only)
-  router.push('/')
-}
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 export default function LoginPage() {
   const router = useRouter()
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (e: any) => {
     e.preventDefault()
-    setError('')
-    setLoading(true)
 
-    try {
-      await signInWithEmailAndPassword(auth, email, password)
+    // ✅ Fake login (frontend only)
+    if (email && password) {
+      localStorage.setItem('user', JSON.stringify({ email }))
       router.push('/')
-    } catch (err: any) {
-      switch (err.code) {
-        case 'auth/user-not-found':
-          setError('No account found with this email.')
-          break
-        case 'auth/wrong-password':
-          setError('Incorrect password. Please try again.')
-          break
-        case 'auth/invalid-email':
-          setError('Invalid email address.')
-          break
-        case 'auth/too-many-requests':
-          setError('Too many attempts. Please try again later.')
-          break
-        default:
-          setError('Login failed. Please try again.')
-      }
-    } finally {
-      setLoading(false)
+    } else {
+      alert('Enter email and password')
     }
   }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC]">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-8">
+      <form
+        onSubmit={handleLogin}
+        className="bg-white p-8 rounded-xl shadow-md w-full max-w-md"
+      >
+        <h2 className="text-xl font-bold mb-6 text-center">Login</h2>
 
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-black text-[#0F2A4A]">
-            SEWER <span className="text-[#2D8C4A]">LABZ</span>
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">Access inspection reports, PDF exports, and reporting templates.</p>
-        </div>
+        <input
+          type="email"
+          placeholder="Email"
+          className="w-full mb-4 p-3 border rounded-lg"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
 
-        {/* Title */}
-        <h2 className="text-xl font-bold text-[#0F172A] mb-2">Sign in to your account</h2>
-        <p className="text-sm text-gray-500 mb-6">New users can create an account and start a free trial.</p>
+        <input
+          type="password"
+          placeholder="Password"
+          className="w-full mb-4 p-3 border rounded-lg"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
 
-        {/* Error */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-600 rounded-lg px-4 py-3 mb-4 text-sm">
-            {error}
-          </div>
-        )}
+        <button className="w-full bg-[#2D8C4A] text-white py-3 rounded-lg">
+          Login
+        </button>
 
-        {/* Form */}
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-[#0F172A] mb-1">
-              Email address
-            </label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2D8C4A] focus:border-transparent"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-[#0F172A] mb-1">
-              Password
-            </label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2D8C4A] focus:border-transparent"
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <label className="flex items-center gap-2 text-sm text-gray-600">
-              <input type="checkbox" className="rounded" />
-              Remember me
-            </label>
-            <span className="text-sm text-gray-400">Forgot password? Contact support.</span>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-[#2D8C4A] hover:bg-[#246b3a] text-white font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? 'Signing in...' : 'Sign in'}
-          </button>
-        </form>
-
-        {/* Signup link */}
-        <p className="text-center text-sm text-gray-500 mt-6">
-          Don't have an account?{' '}
-          <Link href="/signup" className="text-[#2D8C4A] font-medium hover:underline">
-            Create one free
-          </Link>
+        <p className="text-sm mt-4 text-center">
+          No account? <Link href="/signup" className="text-blue-600">Sign up</Link>
         </p>
-
-      </div>
+      </form>
     </div>
   )
 }
