@@ -1,0 +1,2279 @@
+diff --git a/app/(auth)/layout.tsx b/app/(auth)/layout.tsx
+index 3631ff9..ba01656 100644
+--- a/app/(auth)/layout.tsx
++++ b/app/(auth)/layout.tsx
+@@ -1,13 +1,778 @@
+-import type { Metadata } from 'next'
++"use client";
+ 
+-export const metadata: Metadata = {
+-  robots: 'noindex',
+-}
++import { useState, useEffect } from "react";
++
++type CustomDropdown = { label: string; options: string[] };
++
++type Template = {
++  id: string;
++  name: string;
++  companyName: string;
++  companyTagline: string;
++  companyLogo: string;
++  statementOfService: string;
++  includeDefectGraphic: boolean;
++  showSuggestedMaintenance: boolean;
++  customDropdowns: CustomDropdown[];
++  createdAt: string;
++};
++
++const emptyTemplate = (): Omit<Template, "id" | "createdAt"> => ({
++  name: "",
++  companyName: "Sewer Labz",
++  companyTagline: "Don't Let Your Drain Be A Pain!",
++  companyLogo: "",
++  statementOfService:
++    "Sewer Labz is a professional sewer inspection company. All inspections are performed in accordance with industry standards using professional-grade CCTV camera equipment.",
++  includeDefectGraphic: true,
++  showSuggestedMaintenance: true,
++  customDropdowns: [],
++});
++
++export default function TemplatesPage() {
++  const [templates, setTemplates] = useState<Template[]>([]);
++  const [editing, setEditing] = useState<Partial<Template> | null>(null);
++  const [isNew, setIsNew] = useState(false);
++  const [saving, setSaving] = useState(false);
++
++  useEffect(() => {
++    fetchTemplates();
++  }, []);
++
++  const fetchTemplates = async () => {
++    try {
++      const res = await fetch("/api/templates");
++      const data = await res.json();
++      setTemplates(data.templates || []);
++    } catch {
++      // Load from localStorage fallback
++      const local = localStorage.getItem("sewer_templates");
++      if (local) setTemplates(JSON.parse(local));
++    }
++  };
++
++  const handleNew = () => {
++    setEditing(emptyTemplate());
++    setIsNew(true);
++  };
++
++  const handleEdit = (t: Template) => {
++    setEditing({ ...t });
++    setIsNew(false);
++  };
++
++  const handleDelete = async (id: string) => {
++    if (!confirm("Delete this template?")) return;
++    try {
++      await fetch(`/api/templates/${id}`, { method: "DELETE" });
++    } catch {}
++    const updated = templates.filter((t) => t.id !== id);
++    setTemplates(updated);
++    localStorage.setItem("sewer_templates", JSON.stringify(updated));
++  };
++
++  const handleSave = async () => {
++    if (!editing?.name?.trim()) {
++      alert("Template name is required");
++      return;
++    }
++    setSaving(true);
++    try {
++      let saved: Template;
++      if (isNew) {
++        const res = await fetch("/api/templates", {
++          method: "POST",
++          headers: { "Content-Type": "application/json" },
++          body: JSON.stringify(editing),
++        });
++        saved = await res.json();
++        setTemplates((p) => {
++          const updated = [...p, saved];
++          localStorage.setItem("sewer_templates", JSON.stringify(updated));
++          return updated;
++        });
++      } else {
++        const res = await fetch(`/api/templates/${editing.id}`, {
++          method: "PATCH",
++          headers: { "Content-Type": "application/json" },
++          body: JSON.stringify(editing),
++        });
++        saved = await res.json();
++        setTemplates((p) => {
++          const updated = p.map((t) => (t.id === saved.id ? saved : t));
++          localStorage.setItem("sewer_templates", JSON.stringify(updated));
++          return updated;
++        });
++      }
++      setEditing(null);
++    } catch {
++      // Fallback: save to localStorage
++      const fallback: Template = {
++        ...(editing as Template),
++        id: editing.id || Date.now().toString(),
++        createdAt: new Date().toISOString(),
++      };
++      const updated = isNew
++        ? [...templates, fallback]
++        : templates.map((t) => (t.id === fallback.id ? fallback : t));
++      setTemplates(updated);
++      localStorage.setItem("sewer_templates", JSON.stringify(updated));
++      setEditing(null);
++    } finally {
++      setSaving(false);
++    }
++  };
++
++  const updateEditing = (k: string, v: any) =>
++    setEditing((p) => (p ? { ...p, [k]: v } : p));
++
++  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
++    const file = e.target.files?.[0];
++    if (!file) return;
++    const reader = new FileReader();
++    reader.onload = (ev) =>
++      updateEditing("companyLogo", ev.target?.result as string);
++    reader.readAsDataURL(file);
++  };
++
++  // Custom dropdown builder
++  const addDropdown = () => {
++    const current = editing?.customDropdowns || [];
++    updateEditing("customDropdowns", [
++      ...current,
++      { label: "", options: [""] },
++    ]);
++  };
++
++  const updateDropdownLabel = (i: number, val: string) => {
++    const arr = [...(editing?.customDropdowns || [])];
++    arr[i] = { ...arr[i], label: val };
++    updateEditing("customDropdowns", arr);
++  };
++
++  const addDropdownOption = (i: number) => {
++    const arr = [...(editing?.customDropdowns || [])];
++    arr[i] = { ...arr[i], options: [...arr[i].options, ""] };
++    updateEditing("customDropdowns", arr);
++  };
++
++  const updateDropdownOption = (di: number, oi: number, val: string) => {
++    const arr = [...(editing?.customDropdowns || [])];
++    const opts = [...arr[di].options];
++    opts[oi] = val;
++    arr[di] = { ...arr[di], options: opts };
++    updateEditing("customDropdowns", arr);
++  };
++
++  const removeDropdownOption = (di: number, oi: number) => {
++    const arr = [...(editing?.customDropdowns || [])];
++    arr[di] = {
++      ...arr[di],
++      options: arr[di].options.filter((_, i) => i !== oi),
++    };
++    updateEditing("customDropdowns", arr);
++  };
++
++  const removeDropdown = (i: number) => {
++    updateEditing(
++      "customDropdowns",
++      (editing?.customDropdowns || []).filter((_, idx) => idx !== i),
++    );
++  };
++
++  const inp: React.CSSProperties = {
++    height: "36px",
++    borderRadius: "6px",
++    border: "1px solid #E2E8F0",
++    padding: "0 10px",
++    fontSize: "13px",
++    outline: "none",
++    boxSizing: "border-box",
++    background: "#F8FAFC",
++    width: "100%",
++  };
++
++  const lbl: React.CSSProperties = {
++    display: "block",
++    fontSize: "11px",
++    fontWeight: 600,
++    color: "#64748B",
++    marginBottom: "4px",
++    textTransform: "uppercase",
++    letterSpacing: "0.05em",
++  };
++
++  const card: React.CSSProperties = {
++    background: "#fff",
++    border: "1px solid #E2E8F0",
++    borderRadius: "12px",
++    padding: "20px",
++    marginBottom: "16px",
++  };
++
++  // ── Editor view ────────────────────────────────────────────────
++  if (editing !== null)
++    return (
++      <div
++        style={{
++          padding: "24px",
++          maxWidth: "800px",
++          margin: "0 auto",
++          fontFamily: "Inter, Arial, sans-serif",
++        }}
++      >
++        <div
++          style={{
++            display: "flex",
++            justifyContent: "space-between",
++            alignItems: "center",
++            marginBottom: "24px",
++          }}
++        >
++          <h1
++            style={{
++              fontSize: "20px",
++              fontWeight: 800,
++              color: "#0F2A4A",
++              margin: 0,
++            }}
++          >
++            {isNew ? "New Template" : "Edit Template"}
++          </h1>
++          <div style={{ display: "flex", gap: "10px" }}>
++            <button
++              onClick={() => setEditing(null)}
++              style={{
++                padding: "8px 16px",
++                borderRadius: "8px",
++                border: "1px solid #E2E8F0",
++                background: "#fff",
++                fontSize: "13px",
++                fontWeight: 600,
++                cursor: "pointer",
++                color: "#64748B",
++              }}
++            >
++              Cancel
++            </button>
++            <button
++              onClick={handleSave}
++              disabled={saving}
++              style={{
++                padding: "8px 20px",
++                borderRadius: "8px",
++                border: "none",
++                background: saving ? "#94A3B8" : "#2D8C4E",
++                color: "#fff",
++                fontSize: "13px",
++                fontWeight: 700,
++                cursor: saving ? "not-allowed" : "pointer",
++              }}
++            >
++              {saving ? "Saving..." : "Save Template"}
++            </button>
++          </div>
++        </div>
++
++        {/* Template Name */}
++        <div style={card}>
++          <h3
++            style={{
++              fontSize: "14px",
++              fontWeight: 700,
++              color: "#0F2A4A",
++              margin: "0 0 14px",
++            }}
++          >
++            Template Info
++          </h3>
++          <div style={{ marginBottom: "12px" }}>
++            <label style={lbl}>Template Name *</label>
++            <input
++              value={editing.name || ""}
++              onChange={(e) => updateEditing("name", e.target.value)}
++              placeholder="e.g. Standard Residential Inspection"
++              style={inp}
++            />
++          </div>
++        </div>
++
++        {/* Company Branding */}
++        <div style={card}>
++          <h3
++            style={{
++              fontSize: "14px",
++              fontWeight: 700,
++              color: "#0F2A4A",
++              margin: "0 0 14px",
++            }}
++          >
++            Company Branding
++          </h3>
++
++          <div style={{ marginBottom: "14px" }}>
++            <label style={lbl}>Company Logo</label>
++            <input
++              type="file"
++              accept="image/*"
++              onChange={handleLogoUpload}
++              style={{
++                display: "block",
++                fontSize: "13px",
++                color: "#64748B",
++                marginBottom: "8px",
++              }}
++            />
++            {editing.companyLogo && (
++              <img
++                src={editing.companyLogo}
++                alt="Logo preview"
++                style={{
++                  maxHeight: "60px",
++                  objectFit: "contain",
++                  border: "1px solid #E2E8F0",
++                  borderRadius: "6px",
++                  padding: "4px",
++                }}
++              />
++            )}
++          </div>
++
++          <div style={{ marginBottom: "12px" }}>
++            <label style={lbl}>Company Name</label>
++            <input
++              value={editing.companyName || ""}
++              onChange={(e) => updateEditing("companyName", e.target.value)}
++              placeholder="Sewer Labz"
++              style={inp}
++            />
++          </div>
++
++          <div style={{ marginBottom: "12px" }}>
++            <label style={lbl}>Tagline</label>
++            <input
++              value={editing.companyTagline || ""}
++              onChange={(e) => updateEditing("companyTagline", e.target.value)}
++              placeholder="Don't Let Your Drain Be A Pain!"
++              style={inp}
++            />
++          </div>
++        </div>
++
++        {/* Statement of Service */}
++        <div style={card}>
++          <h3
++            style={{
++              fontSize: "14px",
++              fontWeight: 700,
++              color: "#0F2A4A",
++              margin: "0 0 14px",
++            }}
++          >
++            Statement of Service
++          </h3>
++          <label style={lbl}>Custom Statement (appears in every report)</label>
++          <textarea
++            value={editing.statementOfService || ""}
++            onChange={(e) =>
++              updateEditing("statementOfService", e.target.value)
++            }
++            rows={5}
++            style={{
++              ...inp,
++              height: "auto",
++              padding: "10px 12px",
++              resize: "vertical",
++              lineHeight: "1.6",
++            }}
++          />
++        </div>
++
++        {/* Report Options */}
++        <div style={card}>
++          <h3
++            style={{
++              fontSize: "14px",
++              fontWeight: 700,
++              color: "#0F2A4A",
++              margin: "0 0 14px",
++            }}
++          >
++            Report Options
++          </h3>
++
++          {[
++            {
++              key: "includeDefectGraphic",
++              label: "Include Common Sewer Defect Graphic in reports",
++            },
++            {
++              key: "showSuggestedMaintenance",
++              label: 'Enable "Suggested Maintenance" severity option',
++            },
++          ].map(({ key, label }) => (
++            <label
++              key={key}
++              style={{
++                display: "flex",
++                alignItems: "center",
++                gap: "10px",
++                marginBottom: "12px",
++                cursor: "pointer",
++              }}
++            >
++              <input
++                type="checkbox"
++                checked={!!(editing as any)[key]}
++                onChange={(e) => updateEditing(key, e.target.checked)}
++                style={{
++                  width: "16px",
++                  height: "16px",
++                  accentColor: "#0F2A4A",
++                }}
++              />
++              <span style={{ fontSize: "13px", color: "#374151" }}>
++                {label}
++              </span>
++            </label>
++          ))}
++        </div>
++
++        {/* Custom Dropdowns for General Notes */}
++        <div style={card}>
++          <h3
++            style={{
++              fontSize: "14px",
++              fontWeight: 700,
++              color: "#0F2A4A",
++              margin: "0 0 4px",
++            }}
++          >
++            Custom Dropdowns
++          </h3>
++          <p
++            style={{ fontSize: "12px", color: "#94A3B8", marginBottom: "14px" }}
++          >
++            These dropdowns appear in the General Notes tab of every report
++            using this template.
++          </p>
++
++          {(editing.customDropdowns || []).map((dd, i) => (
++            <div
++              key={i}
++              style={{
++                border: "1px solid #E2E8F0",
++                borderRadius: "8px",
++                padding: "14px",
++                marginBottom: "12px",
++                background: "#FAFAFA",
++              }}
++            >
++              <div
++                style={{
++                  display: "flex",
++                  justifyContent: "space-between",
++                  alignItems: "center",
++                  marginBottom: "10px",
++                }}
++              >
++                <input
++                  value={dd.label}
++                  onChange={(e) => updateDropdownLabel(i, e.target.value)}
++                  placeholder="Dropdown label (e.g. Pipe Condition)"
++                  style={{ ...inp, flex: 1, marginRight: "10px" }}
++                />
++                <button
++                  onClick={() => removeDropdown(i)}
++                  style={{
++                    background: "none",
++                    border: "none",
++                    color: "#DC2626",
++                    cursor: "pointer",
++                    fontSize: "18px",
++                  }}
++                >
++                  ×
++                </button>
++              </div>
++              {dd.options.map((opt, oi) => (
++                <div
++                  key={oi}
++                  style={{ display: "flex", gap: "6px", marginBottom: "6px" }}
++                >
++                  <input
++                    value={opt}
++                    onChange={(e) =>
++                      updateDropdownOption(i, oi, e.target.value)
++                    }
++                    placeholder={`Option ${oi + 1}`}
++                    style={{ ...inp, flex: 1 }}
++                  />
++                  {dd.options.length > 1 && (
++                    <button
++                      onClick={() => removeDropdownOption(i, oi)}
++                      style={{
++                        background: "none",
++                        border: "none",
++                        color: "#DC2626",
++                        cursor: "pointer",
++                        fontSize: "16px",
++                      }}
++                    >
++                      ×
++                    </button>
++                  )}
++                </div>
++              ))}
++              <button
++                onClick={() => addDropdownOption(i)}
++                style={{
++                  fontSize: "12px",
++                  color: "#2563EB",
++                  background: "none",
++                  border: "none",
++                  cursor: "pointer",
++                  marginTop: "4px",
++                }}
++              >
++                + Add Option
++              </button>
++            </div>
++          ))}
++
++          <button
++            onClick={addDropdown}
++            style={{
++              padding: "8px 16px",
++              borderRadius: "6px",
++              border: "1px solid #E2E8F0",
++              background: "#F8FAFC",
++              fontSize: "13px",
++              fontWeight: 600,
++              cursor: "pointer",
++              color: "#0F2A4A",
++            }}
++          >
++            + Add Dropdown
++          </button>
++        </div>
++      </div>
++    );
++
++  // ── Templates list view ────────────────────────────────────────
++  return (
++    <div
++      style={{
++        padding: "24px",
++        maxWidth: "1000px",
++        margin: "0 auto",
++        fontFamily: "Inter, Arial, sans-serif",
++      }}
++    >
++      <div
++        style={{
++          display: "flex",
++          justifyContent: "space-between",
++          alignItems: "center",
++          marginBottom: "24px",
++        }}
++      >
++        <div>
++          <h1
++            style={{
++              fontSize: "22px",
++              fontWeight: 800,
++              color: "#0F2A4A",
++              margin: 0,
++            }}
++          >
++            Templates
++          </h1>
++          <p style={{ fontSize: "13px", color: "#94A3B8", marginTop: "4px" }}>
++            Create and manage report templates
++          </p>
++        </div>
++        <button
++          onClick={handleNew}
++          style={{
++            background: "#2D8C4E",
++            color: "#fff",
++            border: "none",
++            borderRadius: "8px",
++            padding: "10px 20px",
++            fontSize: "13px",
++            fontWeight: 700,
++            cursor: "pointer",
++          }}
++        >
++          + New Template
++        </button>
++      </div>
++
++      {templates.length === 0 ? (
++        <div
++          style={{
++            background: "#fff",
++            border: "2px dashed #E2E8F0",
++            borderRadius: "12px",
++            padding: "60px 24px",
++            textAlign: "center",
++          }}
++        >
++          <div style={{ fontSize: "32px", marginBottom: "12px" }}>🗂</div>
++          <div
++            style={{
++              fontSize: "15px",
++              fontWeight: 600,
++              color: "#0F2A4A",
++              marginBottom: "6px",
++            }}
++          >
++            No templates yet
++          </div>
++          <div
++            style={{ fontSize: "13px", color: "#94A3B8", marginBottom: "20px" }}
++          >
++            Create a template to customize your reports with your company
++            branding
++          </div>
++          <button
++            onClick={handleNew}
++            style={{
++              background: "#2D8C4E",
++              color: "#fff",
++              border: "none",
++              borderRadius: "8px",
++              padding: "10px 20px",
++              fontSize: "13px",
++              fontWeight: 600,
++              cursor: "pointer",
++            }}
++          >
++            Create First Template
++          </button>
++        </div>
++      ) : (
++        <div
++          style={{
++            display: "grid",
++            gridTemplateColumns: "repeat(2, 1fr)",
++            gap: "16px",
++          }}
++        >
++          {templates.map((t) => (
++            <div
++              key={t.id}
++              style={{
++                background: "#fff",
++                border: "1px solid #E2E8F0",
++                borderRadius: "12px",
++                padding: "20px",
++              }}
++            >
++              <div
++                style={{
++                  display: "flex",
++                  justifyContent: "space-between",
++                  alignItems: "flex-start",
++                  marginBottom: "12px",
++                }}
++              >
++                <div>
++                  {t.companyLogo && (
++                    <img
++                      src={t.companyLogo}
++                      alt="Logo"
++                      style={{
++                        maxHeight: "36px",
++                        objectFit: "contain",
++                        marginBottom: "8px",
++                        display: "block",
++                      }}
++                    />
++                  )}
++                  <div
++                    style={{
++                      fontSize: "15px",
++                      fontWeight: 700,
++                      color: "#0F2A4A",
++                    }}
++                  >
++                    {t.name}
++                  </div>
++                  <div
++                    style={{
++                      fontSize: "12px",
++                      color: "#94A3B8",
++                      marginTop: "2px",
++                    }}
++                  >
++                    {t.companyName}
++                  </div>
++                </div>
++              </div>
++
++              <div
++                style={{
++                  fontSize: "12px",
++                  color: "#64748B",
++                  marginBottom: "14px",
++                  lineHeight: "1.6",
++                }}
++              >
++                {t.includeDefectGraphic && (
++                  <span style={{ marginRight: "8px" }}>✓ Defect Graphic</span>
++                )}
++                {t.showSuggestedMaintenance && (
++                  <span style={{ marginRight: "8px" }}>
++                    ✓ Suggested Maintenance
++                  </span>
++                )}
++                {t.customDropdowns?.length > 0 && (
++                  <span>
++                    {t.customDropdowns.length} custom dropdown
++                    {t.customDropdowns.length > 1 ? "s" : ""}
++                  </span>
++                )}
++              </div>
+ 
+-export default function AuthLayout({
+-  children,
+-}: {
+-  children: React.ReactNode
+-}) {
+-  return children
++              <div style={{ display: "flex", gap: "8px" }}>
++                <button
++                  onClick={() => handleEdit(t)}
++                  style={{
++                    flex: 1,
++                    padding: "8px",
++                    borderRadius: "6px",
++                    border: "none",
++                    background: "#EFF6FF",
++                    color: "#2563EB",
++                    fontSize: "12px",
++                    fontWeight: 700,
++                    cursor: "pointer",
++                  }}
++                >
++                  Edit
++                </button>
++                <button
++                  onClick={() => handleDelete(t.id)}
++                  style={{
++                    padding: "8px 14px",
++                    borderRadius: "6px",
++                    border: "none",
++                    background: "#FEF2F2",
++                    color: "#DC2626",
++                    fontSize: "12px",
++                    fontWeight: 700,
++                    cursor: "pointer",
++                  }}
++                >
++                  Delete
++                </button>
++              </div>
++            </div>
++          ))}
++        </div>
++      )}
++    </div>
++  );
+ }
+diff --git a/app/(auth)/reports/new/page.tsx b/app/(auth)/reports/new/page.tsx
+index 19adfe5..c6e272f 100644
+--- a/app/(auth)/reports/new/page.tsx
++++ b/app/(auth)/reports/new/page.tsx
+@@ -45,17 +45,13 @@ const pipeMaterials = [
+   'HDPE',
+   'Galvanized Steel',
+   'Copper',
+-  'Lead',
+-  'Stainless Steel',
+-  'Standard Dimensional Ratio (SDR)',
+ ]
+ 
+ const severityColors: Record<string, { bg: string; color: string }> = {
+   'No Defect': { bg: '#F0FDF4', color: '#16A34A' },
+-  'Minor': { bg: '#FFFBEB', color: '#D97706' },
+-  'Moderate': { bg: '#FFF7ED', color: '#EA580C' },
+-  'Major': { bg: '#FEF2F2', color: '#DC2626' },
+-  'Suggested Maintenance': { bg: '#F3F4F6', color: '#6B7280' },
++  Minor: { bg: '#FFFBEB', color: '#D97706' },
++  Moderate: { bg: '#FFF7ED', color: '#EA580C' },
++  Major: { bg: '#FEF2F2', color: '#DC2626' },
+ }
+ 
+ export default function ReportBuilder() {
+@@ -76,16 +72,14 @@ export default function ReportBuilder() {
+     weather: '',
+     cleanoutLocation: '',
+     pipeMaterials: [] as string[],
+-    videoLinks: ['', '', '', ''] as string[],
++    videoLink: '',
+     notes: '',
+-    endOfReportComments: '',
+-    correctiveActions: [] as { type: string; description: string }[],
+   })
+ 
+   const [propertyPhotos, setPropertyPhotos] = useState<string[]>([])
+   const [defects, setDefects] = useState<Defect[]>([])
+   const [dragOver, setDragOver] = useState<string | null>(null)
+-  const [activeTab, setActiveTab] = useState<'details' | 'system' | 'conditions' | 'actions'>('details')
++  const [activeTab, setActiveTab] = useState<'details' | 'system' | 'conditions'>('details')
+ 
+   const updateDetail = (k: string, v: string) =>
+     setDetails(p => ({ ...p, [k]: v }))
+@@ -162,12 +156,7 @@ export default function ReportBuilder() {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({
+-          report: {
+-            ...details,
+-            videoLinks: details.videoLinks.filter(link => link.trim() !== ''),
+-            title,
+-            propertyPhotos
+-          },
++          report: { ...details, title, propertyPhotos },
+           defects,
+         }),
+       })
+@@ -263,9 +252,6 @@ export default function ReportBuilder() {
+         <button style={tabStyle(activeTab === 'conditions')} onClick={() => setActiveTab('conditions')}>
+           🔍 Pipe Conditions {defects.length > 0 && `(${defects.length})`}
+         </button>
+-        <button style={tabStyle(activeTab === 'actions')} onClick={() => setActiveTab('actions')}>
+-          ✅ Corrective Actions
+-        </button>
+       </div>
+ 
+       <div style={{ padding: '24px', maxWidth: '1000px', margin: '0 auto' }}>
+@@ -303,67 +289,8 @@ export default function ReportBuilder() {
+                     <input type="date" value={details.inspectedAt} onChange={e => updateDetail('inspectedAt', e.target.value)} style={inputStyle} />
+                   </div>
+                   <div>
+-                    <label style={labelStyle}>Inspection Time</label>
+-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+-                      <input
+-                        type="text"
+-                        value={details.inspectionTime.split(':')[0] || ''}
+-                        onChange={e => {
+-                          const hours = e.target.value.replace(/\D/g, '').slice(0, 2)
+-                          const currentTime = details.inspectionTime.split(':')
+-                          const newTime = `${hours}:${currentTime[1] || '00'}`
+-                          updateDetail('inspectionTime', newTime)
+-                        }}
+-                        placeholder="HH"
+-                        style={{ width: '40px', height: '38px', borderRadius: '6px', border: '1px solid #E2E8F0', padding: '0 8px', fontSize: '13px', textAlign: 'center' }}
+-                      />
+-                      <span style={{ fontSize: '16px', fontWeight: 'bold' }}>:</span>
+-                      <input
+-                        type="text"
+-                        value={details.inspectionTime.split(':')[1]?.split(' ')[0] || ''}
+-                        onChange={e => {
+-                          const minutes = e.target.value.replace(/\D/g, '').slice(0, 2)
+-                          const currentTime = details.inspectionTime.split(':')
+-                          const ampm = currentTime[1]?.split(' ')[1] || 'AM'
+-                          const newTime = `${currentTime[0] || '00'}:${minutes} ${ampm}`
+-                          updateDetail('inspectionTime', newTime)
+-                        }}
+-                        placeholder="MM"
+-                        style={{ width: '40px', height: '38px', borderRadius: '6px', border: '1px solid #E2E8F0', padding: '0 8px', fontSize: '13px', textAlign: 'center' }}
+-                      />
+-                      <div style={{ display: 'flex', gap: '2px' }}>
+-                        <button
+-                          onClick={() => {
+-                            const time = details.inspectionTime.split(' ')
+-                            updateDetail('inspectionTime', `${time[0]} AM`)
+-                          }}
+-                          style={{
+-                            padding: '6px 8px',
+-                            border: '1px solid #E2E8F0',
+-                            background: details.inspectionTime.includes('AM') ? '#2D8C4E' : '#F8FAFC',
+-                            color: details.inspectionTime.includes('AM') ? '#fff' : '#64748B',
+-                            borderRadius: '4px',
+-                            fontSize: '11px',
+-                            cursor: 'pointer'
+-                          }}
+-                        >AM</button>
+-                        <button
+-                          onClick={() => {
+-                            const time = details.inspectionTime.split(' ')
+-                            updateDetail('inspectionTime', `${time[0]} PM`)
+-                          }}
+-                          style={{
+-                            padding: '6px 8px',
+-                            border: '1px solid #E2E8F0',
+-                            background: details.inspectionTime.includes('PM') ? '#2D8C4E' : '#F8FAFC',
+-                            color: details.inspectionTime.includes('PM') ? '#fff' : '#64748B',
+-                            borderRadius: '4px',
+-                            fontSize: '11px',
+-                            cursor: 'pointer'
+-                          }}
+-                        >PM</button>
+-                      </div>
+-                    </div>
++                    <label style={labelStyle}>Time</label>
++                    <input type="time" value={details.inspectionTime} onChange={e => updateDetail('inspectionTime', e.target.value)} style={inputStyle} />
+                   </div>
+                 </div>
+ 
+@@ -485,22 +412,8 @@ export default function ReportBuilder() {
+                 />
+               </div>
+               <div style={{ marginBottom: '14px' }}>
+-                <label style={labelStyle}>Sewer Video Links (YouTube)</label>
+-                {[0, 1, 2, 3].map(index => (
+-                  <div key={index} style={{ marginBottom: '8px' }}>
+-                    <input
+-                      type="text"
+-                      value={details.videoLinks[index] || ''}
+-                      onChange={e => {
+-                        const newLinks = [...details.videoLinks]
+-                        newLinks[index] = e.target.value
+-                        setDetails(p => ({ ...p, videoLinks: newLinks }))
+-                      }}
+-                      placeholder={`Link ${index + 1}: https://youtu.be/...`}
+-                      style={inputStyle}
+-                    />
+-                  </div>
+-                ))}
++                <label style={labelStyle}>Sewer Video Link (YouTube)</label>
++                <input type="text" value={details.videoLink} onChange={e => updateDetail('videoLink', e.target.value)} placeholder="https://youtu.be/..." style={inputStyle} />
+               </div>
+               <div style={{ marginBottom: '14px' }}>
+                 <label style={labelStyle}>Camera Entry / Cleanout Type</label>
+@@ -599,7 +512,7 @@ export default function ReportBuilder() {
+                       fontWeight: 600,
+                     }}
+                   >
+-                    {['No Defect', 'Minor', 'Moderate', 'Major', 'Suggested Maintenance'].map(s => <option key={s} value={s}>{s}</option>)}
++                    {['No Defect', 'Minor', 'Moderate', 'Major'].map(s => <option key={s} value={s}>{s}</option>)}
+                   </select>
+                   <button onClick={() => toggleExpand(defect.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', color: '#64748B' }}>
+                     {defect.expanded ? '▲' : '▼'}
+@@ -690,125 +603,6 @@ export default function ReportBuilder() {
+             )}
+           </div>
+         )}
+-
+-        {/* TAB 4 — Corrective Actions */}
+-        {activeTab === 'actions' && (
+-          <div>
+-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+-              <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#0F2A4A', margin: 0 }}>
+-                Corrective Actions & Recommendations
+-              </h2>
+-              <button
+-                onClick={() => {
+-                  setDetails(p => ({
+-                    ...p,
+-                    correctiveActions: [...p.correctiveActions, { type: '', description: '' }]
+-                  }))
+-                }}
+-                style={{
+-                  background: '#2D8C4E', color: '#fff', border: 'none',
+-                  borderRadius: '8px', padding: '8px 16px', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+-                }}
+-              >+ Add Action</button>
+-            </div>
+-
+-            {details.correctiveActions.length === 0 && (
+-              <div style={{
+-                background: '#fff', border: '2px dashed #E2E8F0',
+-                borderRadius: '12px', padding: '48px 24px', textAlign: 'center',
+-              }}>
+-                <div style={{ fontSize: '32px', marginBottom: '12px' }}>✅</div>
+-                <div style={{ fontSize: '15px', fontWeight: 600, color: '#0F2A4A', marginBottom: '6px' }}>No corrective actions added yet</div>
+-                <div style={{ fontSize: '13px', color: '#94A3B8', marginBottom: '20px' }}>Add recommended corrective actions and repairs</div>
+-                <button
+-                  onClick={() => {
+-                    setDetails(p => ({
+-                      ...p,
+-                      correctiveActions: [{ type: 'Recommended Repair', description: 'Full evaluation and/or corrections with written findings and costs to cure by a competent licensed plumbing contractor.' }]
+-                    }))
+-                  }}
+-                  style={{
+-                    background: '#2D8C4E', color: '#fff', border: 'none',
+-                    borderRadius: '8px', padding: '10px 20px', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+-                  }}
+-                >Add Default Actions</button>
+-              </div>
+-            )}
+-
+-            {details.correctiveActions.map((action, index) => (
+-              <div key={index} style={{
+-                background: '#fff', border: '1px solid #E2E8F0',
+-                borderRadius: '12px', marginBottom: '16px', padding: '20px',
+-              }}>
+-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+-                  <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#0F2A4A', margin: 0 }}>
+-                    Action #{index + 1}
+-                  </h3>
+-                  <button
+-                    onClick={() => {
+-                      setDetails(p => ({
+-                        ...p,
+-                        correctiveActions: p.correctiveActions.filter((_, i) => i !== index)
+-                      }))
+-                    }}
+-                    style={{
+-                      background: '#DC2626', color: '#fff', border: 'none',
+-                      borderRadius: '6px', padding: '4px 8px', fontSize: '12px', cursor: 'pointer',
+-                    }}
+-                  >Remove</button>
+-                </div>
+-
+-                <div style={{ marginBottom: '12px' }}>
+-                  <label style={labelStyle}>Action Type</label>
+-                  <select
+-                    value={action.type}
+-                    onChange={e => {
+-                      const newActions = [...details.correctiveActions]
+-                      newActions[index].type = e.target.value
+-                      setDetails(p => ({ ...p, correctiveActions: newActions }))
+-                    }}
+-                    style={inputStyle}
+-                  >
+-                    <option value="">Select Action Type</option>
+-                    <option value="Immediate Repair">Immediate Repair</option>
+-                    <option value="Scheduled Maintenance">Scheduled Maintenance</option>
+-                    <option value="Further Evaluation">Further Evaluation</option>
+-                    <option value="Monitor Condition">Monitor Condition</option>
+-                    <option value="Professional Consultation">Professional Consultation</option>
+-                  </select>
+-                </div>
+-
+-                <div>
+-                  <label style={labelStyle}>Description</label>
+-                  <textarea
+-                    value={action.description}
+-                    onChange={e => {
+-                      const newActions = [...details.correctiveActions]
+-                      newActions[index].description = e.target.value
+-                      setDetails(p => ({ ...p, correctiveActions: newActions }))
+-                    }}
+-                    placeholder="Describe the recommended corrective action..."
+-                    rows={3}
+-                    style={{ ...inputStyle, height: 'auto', padding: '10px 12px', resize: 'vertical', lineHeight: '1.6' }}
+-                  />
+-                </div>
+-              </div>
+-            ))}
+-
+-            <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: '12px', padding: '20px', marginTop: '24px' }}>
+-              <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#0F2A4A', margin: '0 0 16px' }}>
+-                End of Report Comments
+-              </h3>
+-              <textarea
+-                value={details.endOfReportComments}
+-                onChange={e => updateDetail('endOfReportComments', e.target.value)}
+-                placeholder="Add final comments or recommendations for the end of the report..."
+-                rows={4}
+-                style={{ ...inputStyle, height: 'auto', padding: '10px 12px', resize: 'vertical', lineHeight: '1.6' }}
+-              />
+-            </div>
+-          </div>
+-        )}
+       </div>
+     </div>
+   )
+diff --git a/app/page.tsx b/app/page.tsx
+index f30e389..b593ba1 100644
+--- a/app/page.tsx
++++ b/app/page.tsx
+@@ -1,154 +1,226 @@
+ 'use client'
+-
+-import { useState, useEffect } from 'react'
+-import { useRouter } from 'next/navigation'
+-import Link from 'next/link'
++import { useState } from 'react'
++
++const stats = [
++  { label: 'Total Reports', value: '0', icon: '📄' },
++  { label: 'Completed This Month', value: '0', icon: '✅' },
++  { label: 'Drafts', value: '0', icon: '📝' },
++  { label: 'Templates Used', value: '0', icon: '📋' },
++]
++
++const reports = [
++  { title: 'Main St Inspection', job: 'JOB-001', client: 'City Council', date: '30 Mar 2026', status: 'Complete' },
++  { title: 'Harbor Rd Survey', job: 'JOB-002', client: 'Port Authority', date: '29 Mar 2026', status: 'Draft' },
++  { title: 'Oak Ave Pipeline', job: 'JOB-003', client: 'Waterworks Ltd', date: '28 Mar 2026', status: 'Draft' },
++  { title: 'Central Park Drain', job: 'JOB-004', client: 'Parks Dept', date: '27 Mar 2026', status: 'Complete' },
++  { title: 'West End Sewer', job: 'JOB-005', client: 'BuildCo', date: '26 Mar 2026', status: 'Archived' },
++]
+ 
+ export default function Dashboard() {
+-  const router = useRouter()
+-
+-  const [user, setUser] = useState<any>(null)
+-  const [loading, setLoading] = useState(true)
+-
+-  const [stats] = useState({
+-    totalReports: 0,
+-    monthReports: 0,
+-    drafts: 0,
+-    templatesUsed: 0
+-  })
+-
+-  const [reports] = useState<any[]>([])
+-
+-  // ✅ Load user from localStorage (frontend only auth)
+-  useEffect(() => {
+-    const storedUser = localStorage.getItem('user')
+-
+-    if (!storedUser) {
+-      router.push('/login')
+-    } else {
+-      setUser(JSON.parse(storedUser))
+-      setLoading(false)
+-    }
+-  }, [router])
+-
+-  const handleLogout = () => {
+-    localStorage.removeItem('user')
+-    router.push('/login')
+-  }
+-
+-  if (loading || !user) {
+-    return (
+-      <div className="min-h-screen flex items-center justify-center">
+-        <p className="text-gray-400">Loading...</p>
+-      </div>
+-    )
+-  }
++  const [sidebarOpen, setSidebarOpen] = useState(true)
++  const [trialDismissed, setTrialDismissed] = useState(false)
+ 
+   return (
+-    <div className="min-h-screen bg-[#F8FAFC] flex">
++    <div style={{ display: 'flex', minHeight: '100vh', fontFamily: 'Inter, sans-serif', background: '#F8FAFC' }}>
+ 
+       {/* Sidebar */}
+-      <div className="w-64 bg-[#0F2A4A] min-h-screen flex flex-col p-6">
+-        <div className="mb-8">
+-          <h1 className="text-2xl font-black text-white">
+-            SEWER <span className="text-[#2D8C4A]">LABZ</span>
+-          </h1>
+-          <p className="text-xs text-gray-400 mt-1">Professional Reports</p>
++      <div style={{
++        width: sidebarOpen ? '240px' : '0',
++        minHeight: '100vh',
++        background: '#0F2A4A',
++        display: 'flex',
++        flexDirection: 'column',
++        transition: 'width 0.2s',
++        overflow: 'hidden',
++        flexShrink: 0,
++      }}>
++        <div style={{ padding: '24px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)', whiteSpace: 'nowrap' }}>
++          <div style={{ fontSize: '22px', fontWeight: 900 }}>
++            <span style={{ color: '#ffffff' }}>SEWER </span>
++            <span style={{ color: '#2D8C4E' }}>LABZ</span>
++          </div>
++          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', marginTop: '2px' }}>Inspection Platform</div>
+         </div>
+ 
+-        <nav className="flex flex-col gap-2 flex-1">
+-          <Link href="/" className="text-white bg-white/10 px-4 py-2.5 rounded-lg text-sm">
+-            📊 Dashboard
+-          </Link>
+-          <Link href="/reports/new" className="text-gray-300 hover:text-white hover:bg-white/10 px-4 py-2.5 rounded-lg text-sm">
+-            📝 New Report
+-          </Link>
+-          <Link href="/templates" className="text-gray-300 hover:text-white hover:bg-white/10 px-4 py-2.5 rounded-lg text-sm">
+-            📋 Templates
+-          </Link>
+-          <Link href="/settings" className="text-gray-300 hover:text-white hover:bg-white/10 px-4 py-2.5 rounded-lg text-sm">
+-            ⚙️ Settings
+-          </Link>
++        <nav style={{ flex: 1, padding: '16px 12px' }}>
++          {[
++            { icon: '⊞', label: 'Dashboard', href: '/', active: true },
++            { icon: '📄', label: 'Reports', href: '/reports/new', active: false },
++            { icon: '📋', label: 'Templates', href: '/templates', active: false },
++            { icon: '⚙️', label: 'Settings', href: '#', active: false },
++          ].map(item => (
++            <div
++              key={item.label}
++              onClick={() => window.location.href = item.href}
++              style={{
++                display: 'flex', alignItems: 'center', gap: '10px',
++                padding: '10px 12px', borderRadius: '8px', marginBottom: '4px',
++                background: item.active ? '#2D8C4E' : 'transparent',
++                color: item.active ? '#fff' : 'rgba(255,255,255,0.65)',
++                cursor: 'pointer', whiteSpace: 'nowrap', fontSize: '14px',
++                fontWeight: item.active ? 600 : 400,
++              }}
++            >
++              <span>{item.icon}</span>
++              <span>{item.label}</span>
++            </div>
++          ))}
+         </nav>
+ 
+-        {/* User */}
+-        <div className="border-t border-white/10 pt-4 mt-4">
+-          <div className="flex items-center gap-3 mb-3">
+-            <div className="w-9 h-9 rounded-full bg-[#2D8C4A] flex items-center justify-center text-white font-bold text-sm">
+-              {user.email?.[0]?.toUpperCase()}
+-            </div>
++        <div style={{ padding: '16px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
++          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
++            <div style={{
++              width: '36px', height: '36px', borderRadius: '50%',
++              background: '#2D8C4E', display: 'flex', alignItems: 'center',
++              justifyContent: 'center', color: '#fff', fontWeight: 700,
++              fontSize: '14px', flexShrink: 0,
++            }}>AR</div>
+             <div>
+-              <p className="text-white text-xs font-medium">
+-                {user.email || 'Demo User'}
+-              </p>
+-              <p className="text-gray-400 text-xs">
+-                Frontend Mode
+-              </p>
++              <div style={{ color: '#fff', fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap' }}>Ajay Raymon</div>
++              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '11px' }}>Admin</div>
+             </div>
+           </div>
+-
+-          <button
+-            onClick={handleLogout}
+-            className="w-full text-red-400 hover:text-red-300 hover:bg-red-400/10 px-4 py-2 rounded-lg text-sm text-left"
+-          >
+-            🚪 Logout
+-          </button>
++          <button style={{
++            marginTop: '12px', width: '100%', padding: '8px', borderRadius: '6px',
++            background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)',
++            fontSize: '12px', textAlign: 'center', cursor: 'pointer', border: 'none',
++          }}>Logout</button>
+         </div>
+       </div>
+ 
+-      {/* Main */}
+-      <div className="flex-1 p-8">
+-
+-        {/* Header */}
+-        <div className="flex justify-between items-center mb-8">
+-          <div>
+-            <h2 className="text-2xl font-bold text-[#0F172A]">
+-              Welcome back 👋
+-            </h2>
+-            <p className="text-gray-500 text-sm mt-1">
+-              Frontend preview mode
+-            </p>
++      {/* Main content */}
++      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
++
++        {/* Top bar */}
++        <div style={{
++          background: '#fff', borderBottom: '1px solid #E2E8F0',
++          padding: '16px 24px', display: 'flex', alignItems: 'center',
++          justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 10,
++        }}>
++          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
++            <button onClick={() => setSidebarOpen(!sidebarOpen)} style={{
++              background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#64748B',
++            }}>☰</button>
++            <h1 style={{ fontSize: '18px', fontWeight: 700, color: '#0F2A4A', margin: 0 }}>Dashboard</h1>
+           </div>
+-
+-          <Link
+-            href="/reports/new"
+-            className="bg-[#2D8C4A] text-white px-5 py-2.5 rounded-lg text-sm"
+-          >
+-            + New Report
+-          </Link>
++          <button onClick={() => window.location.href = '/reports/new'} style={{
++            background: '#2D8C4E', color: '#fff', border: 'none',
++            padding: '9px 18px', borderRadius: '8px', fontSize: '14px',
++            fontWeight: 600, cursor: 'pointer',
++          }}>+ New Report</button>
+         </div>
+ 
+-        {/* Stats */}
+-        <div className="grid grid-cols-4 gap-4 mb-8">
+-          <div className="bg-white p-5 rounded-2xl">
+-            <p className="text-xs text-gray-500">Total Reports</p>
+-            <p className="text-3xl font-bold">{stats.totalReports}</p>
++        {/* Trial banner */}
++        {!trialDismissed && (
++          <div style={{
++            background: '#FFFBEB', borderBottom: '1px solid #FDE68A',
++            padding: '10px 24px', display: 'flex',
++            alignItems: 'center', justifyContent: 'space-between',
++          }}>
++            <span style={{ color: '#92400E', fontSize: '14px' }}>
++              ⚠️ You have <strong>5 days</strong> left on your free trial.
++            </span>
++            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
++              <button
++                onClick={() => window.location.href = '/subscribe'}
++                style={{
++                  background: '#2D8C4E', color: '#fff', border: 'none',
++                  padding: '6px 14px', borderRadius: '6px',
++                  fontSize: '13px', fontWeight: 600, cursor: 'pointer',
++                }}
++              >Subscribe Now</button>
++              <button
++                onClick={() => setTrialDismissed(true)}
++                style={{
++                  background: 'none', border: 'none',
++                  color: '#92400E', fontSize: '18px',
++                  cursor: 'pointer', lineHeight: 1,
++                }}
++              >×</button>
++            </div>
+           </div>
+-
+-          <div className="bg-white p-5 rounded-2xl">
+-            <p className="text-xs text-gray-500">This Month</p>
+-            <p className="text-3xl font-bold">{stats.monthReports}</p>
++        )}
++
++        {/* Content */}
++        <div style={{ padding: '24px', flex: 1 }}>
++
++          {/* Stats */}
++          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
++            {stats.map(stat => (
++              <div key={stat.label} style={{
++                background: '#fff', border: '1px solid #E2E8F0',
++                borderRadius: '12px', padding: '20px',
++                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
++              }}>
++                <div>
++                  <div style={{ fontSize: '13px', color: '#64748B', marginBottom: '6px' }}>{stat.label}</div>
++                  <div style={{ fontSize: '28px', fontWeight: 700, color: '#0F2A4A' }}>{stat.value}</div>
++                </div>
++                <div style={{
++                  width: '44px', height: '44px', borderRadius: '10px',
++                  background: '#E8F5EE', display: 'flex',
++                  alignItems: 'center', justifyContent: 'center', fontSize: '20px',
++                }}>{stat.icon}</div>
++              </div>
++            ))}
+           </div>
+ 
+-          <div className="bg-white p-5 rounded-2xl">
+-            <p className="text-xs text-gray-500">Drafts</p>
+-            <p className="text-3xl font-bold">{stats.drafts}</p>
+-          </div>
+-
+-          <div className="bg-white p-5 rounded-2xl">
+-            <p className="text-xs text-gray-500">Templates</p>
+-            <p className="text-3xl font-bold">{stats.templatesUsed}</p>
++          {/* Table */}
++          <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: '12px', overflow: 'hidden' }}>
++            <div style={{
++              padding: '16px 20px', borderBottom: '1px solid #E2E8F0',
++              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
++            }}>
++              <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#0F2A4A', margin: 0 }}>Recent Reports</h2>
++              <span style={{ fontSize: '13px', color: '#2D8C4E', cursor: 'pointer', fontWeight: 500 }}>View all →</span>
++            </div>
++            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
++              <thead>
++                <tr style={{ background: '#F8FAFC' }}>
++                  {['Report Title', 'Job #', 'Client', 'Date', 'Status', 'Actions'].map(h => (
++                    <th key={h} style={{
++                      padding: '12px 20px', textAlign: 'left', fontSize: '12px',
++                      fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em',
++                    }}>{h}</th>
++                  ))}
++                </tr>
++              </thead>
++              <tbody>
++                {reports.map((r, i) => (
++                  <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
++                    <td style={{ padding: '14px 20px', fontSize: '14px', fontWeight: 600, color: '#0F2A4A' }}>{r.title}</td>
++                    <td style={{ padding: '14px 20px', fontSize: '14px', color: '#64748B' }}>{r.job}</td>
++                    <td style={{ padding: '14px 20px', fontSize: '14px', color: '#64748B' }}>{r.client}</td>
++                    <td style={{ padding: '14px 20px', fontSize: '14px', color: '#64748B' }}>{r.date}</td>
++                    <td style={{ padding: '14px 20px' }}>
++                      <span style={{
++                        padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 600,
++                        background: r.status === 'Complete' ? '#E8F5EE' : r.status === 'Draft' ? '#F1F5F9' : '#EFF6FF',
++                        color: r.status === 'Complete' ? '#2D8C4E' : r.status === 'Draft' ? '#64748B' : '#0F2A4A',
++                      }}>{r.status}</span>
++                    </td>
++                    <td style={{ padding: '14px 20px' }}>
++                      <div style={{ display: 'flex', gap: '6px' }}>
++                        {['View', 'Edit'].map(action => (
++                          <button key={action} style={{
++                            background: 'none', border: '1px solid #E2E8F0',
++                            borderRadius: '6px', padding: '5px 10px',
++                            fontSize: '12px', cursor: 'pointer', color: '#64748B', fontWeight: 500,
++                          }}>{action}</button>
++                        ))}
++                        <button style={{
++                          background: '#2D8C4E', border: 'none', borderRadius: '6px',
++                          padding: '5px 10px', fontSize: '12px', cursor: 'pointer',
++                          color: '#fff', fontWeight: 500,
++                        }}>PDF</button>
++                      </div>
++                    </td>
++                  </tr>
++                ))}
++              </tbody>
++            </table>
+           </div>
+         </div>
+-
+-        {/* Empty State */}
+-        <div className="bg-white p-10 rounded-2xl text-center">
+-          <p className="text-4xl mb-3">📋</p>
+-          <p className="text-gray-500">
+-            No reports yet (frontend mode)
+-          </p>
+-        </div>
+-
+       </div>
+     </div>
+   )
+diff --git a/app/settings/page.tsx b/app/settings/page.tsx
+index e8c1bc7..4d5d18b 100644
+--- a/app/settings/page.tsx
++++ b/app/settings/page.tsx
+@@ -1,357 +1,515 @@
+-'use client'
++"use client";
+ 
+-import { useState, useEffect } from 'react'
+-import { useRouter } from 'next/navigation'
+-import { auth } from '@/app/Lib/firebase'
+-import { updatePassword, updateProfile, signOut } from 'firebase/auth'
+-import Link from 'next/link'
++import { useState, useEffect } from "react";
++import { useRouter } from "next/navigation";
++
++type UserSettings = {
++  email: string;
++  fullName: string;
++  companyName: string;
++  companyPhone: string;
++  companyAddress: string;
++  companyWebsite: string;
++  licenseNumber: string;
++};
+ 
+ export default function SettingsPage() {
+-  const router = useRouter()
+-  const [user, setUser] = useState<any>(null)
+-  const [activeTab, setActiveTab] = useState('profile')
+-  const [displayName, setDisplayName] = useState('')
+-  const [companyName, setCompanyName] = useState('')
+-  const [newPassword, setNewPassword] = useState('')
+-  const [confirmPassword, setConfirmPassword] = useState('')
+-  const subscriptionPlan = 'Free Plan'
+-  const planTag = '5 reports per month'
+-  const [success, setSuccess] = useState('')
+-  const [error, setError] = useState('')
+-  const [loading, setLoading] = useState(false)
++  const router = useRouter();
++  const [activeTab, setActiveTab] = useState<
++    "account" | "company" | "subscription"
++  >("account");
++  const [settings, setSettings] = useState<UserSettings>({
++    email: "",
++    fullName: "",
++    companyName: "",
++    companyPhone: "",
++    companyAddress: "",
++    companyWebsite: "",
++    licenseNumber: "",
++  });
++  const [saving, setSaving] = useState(false);
++  const [saved, setSaved] = useState(false);
++  const [plan] = useState("FREE");
+ 
++  // ✅ FIX 1 — Properly merge user email + saved settings without overwriting
+   useEffect(() => {
+-    const unsubscribe = auth.onAuthStateChanged((user) => {
+-      if (!user) {
+-        router.push('/login')
+-      } else {
+-        setUser(user)
+-        setDisplayName(user.displayName || '')
+-      }
+-    })
+-    return () => unsubscribe()
+-  }, [router])
++    const stored = localStorage.getItem("user");
++    const savedSettings = localStorage.getItem("sewer_settings");
+ 
+-  const handleUpdateProfile = async (e: React.FormEvent) => {
+-    e.preventDefault()
+-    setError('')
+-    setSuccess('')
+-    setLoading(true)
+-    try {
+-      await updateProfile(user, { displayName })
+-      setSuccess('Profile updated successfully!')
+-    } catch (err) {
+-      setError('Failed to update profile.')
+-    } finally {
+-      setLoading(false)
++    if (savedSettings) {
++      const parsed = JSON.parse(savedSettings);
++      // Pull email from user if missing in saved settings
++      if (stored && !parsed.email) {
++        parsed.email = JSON.parse(stored).email || "";
++      }
++      setSettings(parsed);
++    } else if (stored) {
++      const u = JSON.parse(stored);
++      setSettings((p) => ({ ...p, email: u.email || "" }));
+     }
+-  }
++  }, []);
+ 
+-  const handleUpdatePassword = async (e: React.FormEvent) => {
+-    e.preventDefault()
+-    setError('')
+-    setSuccess('')
+-    if (newPassword !== confirmPassword) {
+-      setError('Passwords do not match.')
+-      return
+-    }
+-    if (newPassword.length < 8) {
+-      setError('Password must be at least 8 characters.')
+-      return
+-    }
+-    setLoading(true)
++  const update = (k: string, v: string) =>
++    setSettings((p) => ({ ...p, [k]: v }));
++
++  const handleSave = async () => {
++    setSaving(true);
+     try {
+-      await updatePassword(user, newPassword)
+-      setSuccess('Password updated successfully!')
+-      setNewPassword('')
+-      setConfirmPassword('')
++      const res = await fetch("/api/settings", {
++        method: "PATCH",
++        headers: { "Content-Type": "application/json" },
++        body: JSON.stringify(settings),
++      });
++      if (!res.ok) throw new Error("API failed");
+     } catch (err) {
+-      setError('Failed to update password. Please log out and log in again first.')
+-    } finally {
+-      setLoading(false)
++      console.error("Settings API error:", err);
+     }
+-  }
++    // Always save to localStorage as fallback
++    localStorage.setItem("sewer_settings", JSON.stringify(settings));
++    setSaving(false);
++    setSaved(true);
++    setTimeout(() => setSaved(false), 2500);
++  };
+ 
+-  const handleLogout = async () => {
+-    await signOut(auth)
+-    router.push('/login')
+-  }
++  const handleLogout = () => {
++    localStorage.removeItem("user");
++    router.replace("/login");
++  };
+ 
+-  const tabs = [
+-    { id: 'profile', label: '👤 Profile' },
+-    { id: 'password', label: '🔒 Password' },
+-    { id: 'company', label: '🏢 Company' },
+-    { id: 'subscription', label: '💳 Subscription' },
+-  ]
++  const inp: React.CSSProperties = {
++    height: "36px",
++    borderRadius: "6px",
++    border: "1px solid #E2E8F0",
++    padding: "0 10px",
++    fontSize: "13px",
++    outline: "none",
++    boxSizing: "border-box",
++    background: "#F8FAFC",
++    width: "100%",
++  };
+ 
+-  return (
+-    <div className="min-h-screen bg-[#F8FAFC] flex">
++  const lbl: React.CSSProperties = {
++    display: "block",
++    fontSize: "11px",
++    fontWeight: 600,
++    color: "#64748B",
++    marginBottom: "4px",
++    textTransform: "uppercase",
++    letterSpacing: "0.05em",
++  };
+ 
+-      {/* Sidebar */}
+-      <div className="w-64 bg-[#0F2A4A] min-h-screen flex flex-col p-6">
+-        <div className="mb-8">
+-          <h1 className="text-2xl font-black text-white">
+-            SEWER <span className="text-[#2D8C4A]">LABZ</span>
++  const card: React.CSSProperties = {
++    background: "#fff",
++    border: "1px solid #E2E8F0",
++    borderRadius: "12px",
++    padding: "24px",
++    marginBottom: "16px",
++  };
++
++  const tab = (active: boolean): React.CSSProperties => ({
++    padding: "8px 18px",
++    borderRadius: "6px",
++    fontSize: "13px",
++    fontWeight: 600,
++    cursor: "pointer",
++    border: "none",
++    background: active ? "#0F2A4A" : "transparent",
++    color: active ? "#fff" : "#64748B",
++  });
++
++  return (
++    <div
++      style={{
++        padding: "24px",
++        maxWidth: "800px",
++        margin: "0 auto",
++        fontFamily: "Inter, Arial, sans-serif",
++      }}
++    >
++      {/* Header */}
++      <div
++        style={{
++          display: "flex",
++          justifyContent: "space-between",
++          alignItems: "center",
++          marginBottom: "24px",
++        }}
++      >
++        <div>
++          <h1
++            style={{
++              fontSize: "22px",
++              fontWeight: 800,
++              color: "#0F2A4A",
++              margin: 0,
++            }}
++          >
++            Settings
+           </h1>
+-          <p className="text-xs text-gray-400 mt-1">Professional Reports</p>
++          <p style={{ fontSize: "13px", color: "#94A3B8", marginTop: "4px" }}>
++            Manage your account and preferences
++          </p>
+         </div>
++        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
++          {saved && (
++            <span
++              style={{ fontSize: "13px", color: "#16A34A", fontWeight: 600 }}
++            >
++              ✓ Saved
++            </span>
++          )}
++          <button
++            onClick={handleSave}
++            disabled={saving}
++            style={{
++              background: saving ? "#94A3B8" : "#2D8C4E",
++              color: "#fff",
++              border: "none",
++              borderRadius: "8px",
++              padding: "8px 20px",
++              fontSize: "13px",
++              fontWeight: 700,
++              cursor: saving ? "not-allowed" : "pointer",
++            }}
++          >
++            {saving ? "Saving..." : "Save Changes"}
++          </button>
++        </div>
++      </div>
+ 
+-        <nav className="flex flex-col gap-2 flex-1">
+-          <Link href="/" className="text-gray-300 hover:text-white hover:bg-white/10 px-4 py-2.5 rounded-lg text-sm transition-colors">
+-            📊 Dashboard
+-          </Link>
+-          <Link href="/reports/new" className="text-gray-300 hover:text-white hover:bg-white/10 px-4 py-2.5 rounded-lg text-sm transition-colors">
+-            📝 New Report
+-          </Link>
+-          <Link href="/templates" className="text-gray-300 hover:text-white hover:bg-white/10 px-4 py-2.5 rounded-lg text-sm transition-colors">
+-            📋 Templates
+-          </Link>
+-          <Link href="/settings" className="text-white bg-white/10 px-4 py-2.5 rounded-lg text-sm">
+-            ⚙️ Settings
+-          </Link>
+-        </nav>
+-
++      {/* Tabs */}
++      <div
++        style={{
++          display: "flex",
++          gap: "4px",
++          marginBottom: "20px",
++          background: "#fff",
++          padding: "8px",
++          borderRadius: "10px",
++          border: "1px solid #E2E8F0",
++        }}
++      >
++        <button
++          style={tab(activeTab === "account")}
++          onClick={() => setActiveTab("account")}
++        >
++          👤 Account
++        </button>
++        <button
++          style={tab(activeTab === "company")}
++          onClick={() => setActiveTab("company")}
++        >
++          🏢 Company
++        </button>
+         <button
+-          onClick={handleLogout}
+-          className="mt-auto text-red-400 hover:text-red-300 hover:bg-red-400/10 px-4 py-2.5 rounded-lg text-sm transition-colors text-left"
++          style={tab(activeTab === "subscription")}
++          onClick={() => setActiveTab("subscription")}
+         >
+-          🚪 Logout
++          💳 Subscription
+         </button>
+       </div>
+ 
+-      {/* Main Content */}
+-      <div className="flex-1 p-8">
+-        <div className="max-w-2xl mx-auto">
+-
+-          {/* Header */}
+-          <div className="mb-8">
+-            <h2 className="text-2xl font-bold text-[#0F172A]">Settings</h2>
+-            <p className="text-gray-500 text-sm mt-1">Manage your account and preferences</p>
+-          </div>
+-
+-          {/* User Info Card */}
+-          <div className="bg-white rounded-2xl shadow-sm p-6 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+-            <div className="flex items-center gap-4">
+-              <div className="w-16 h-16 rounded-full bg-[#0F2A4A] flex items-center justify-center text-white text-2xl font-bold">
+-                {user?.displayName ? user.displayName[0].toUpperCase() : user?.email?.[0].toUpperCase()}
++      {/* Account Tab */}
++      {activeTab === "account" && (
++        <>
++          <div style={card}>
++            <h3
++              style={{
++                fontSize: "14px",
++                fontWeight: 700,
++                color: "#0F2A4A",
++                margin: "0 0 16px",
++              }}
++            >
++              Account Information
++            </h3>
++            <div
++              style={{
++                display: "grid",
++                gridTemplateColumns: "1fr 1fr",
++                gap: "14px",
++              }}
++            >
++              <div>
++                <label style={lbl}>Full Name</label>
++                <input
++                  value={settings.fullName}
++                  onChange={(e) => update("fullName", e.target.value)}
++                  placeholder="Your full name"
++                  style={inp}
++                />
+               </div>
+               <div>
+-                <h3 className="font-bold text-[#0F172A] text-lg">{user?.displayName || 'User'}</h3>
+-                <p className="text-gray-500 text-sm">{user?.email}</p>
+-                <p className="text-xs text-gray-400 mt-2">{subscriptionPlan} • {planTag}</p>
++                <label style={lbl}>Email Address</label>
++                <input
++                  value={settings.email}
++                  onChange={(e) => update("email", e.target.value)}
++                  placeholder="you@example.com"
++                  style={{ ...inp, color: "#94A3B8" }}
++                  disabled
++                />
+               </div>
++              <div>
++                <label style={lbl}>License Number</label>
++                <input
++                  value={settings.licenseNumber}
++                  onChange={(e) => update("licenseNumber", e.target.value)}
++                  placeholder="Inspector license #"
++                  style={inp}
++                />
++              </div>
++            </div>
++          </div>
++
++          <div style={card}>
++            <h3
++              style={{
++                fontSize: "14px",
++                fontWeight: 700,
++                color: "#0F2A4A",
++                margin: "0 0 16px",
++              }}
++            >
++              Security
++            </h3>
++            <div
++              style={{
++                padding: "12px",
++                background: "#F8FAFC",
++                borderRadius: "8px",
++                fontSize: "13px",
++                color: "#64748B",
++                marginBottom: "12px",
++              }}
++            >
++              Password reset is handled via email. Click below to receive a
++              reset link.
+             </div>
+             <button
+-              type="button"
+-              onClick={() => setActiveTab('subscription')}
+-              className="inline-flex items-center justify-center rounded-full bg-[#2D8C4A] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#246b3a]"
++              style={{
++                padding: "8px 18px",
++                borderRadius: "6px",
++                border: "1px solid #E2E8F0",
++                background: "#fff",
++                fontSize: "13px",
++                fontWeight: 600,
++                cursor: "pointer",
++                color: "#0F2A4A",
++              }}
+             >
+-              Subscribe
++              Send Password Reset Email
+             </button>
+           </div>
+ 
+-          {/* Tabs */}
+-          <div className="flex gap-2 mb-6 bg-white rounded-xl p-1 shadow-sm">
+-            {tabs.map(tab => (
+-              <button
+-                key={tab.id}
+-                onClick={() => { setActiveTab(tab.id); setError(''); setSuccess('') }}
+-                className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
+-                  activeTab === tab.id
+-                    ? 'bg-[#0F2A4A] text-white'
+-                    : 'text-gray-500 hover:text-gray-700'
+-                }`}
+-              >
+-                {tab.label}
+-              </button>
+-            ))}
++          <div style={card}>
++            <h3
++              style={{
++                fontSize: "14px",
++                fontWeight: 700,
++                color: "#DC2626",
++                margin: "0 0 12px",
++              }}
++            >
++              Danger Zone
++            </h3>
++            <button
++              onClick={handleLogout}
++              style={{
++                padding: "8px 18px",
++                borderRadius: "6px",
++                border: "none",
++                background: "#FEF2F2",
++                color: "#DC2626",
++                fontSize: "13px",
++                fontWeight: 700,
++                cursor: "pointer",
++              }}
++            >
++              Sign Out
++            </button>
+           </div>
++        </>
++      )}
+ 
+-          {/* Success/Error */}
+-          {success && (
+-            <div className="bg-green-50 border border-green-200 text-green-700 rounded-lg px-4 py-3 mb-4 text-sm">
+-              ✅ {success}
+-            </div>
+-          )}
+-          {error && (
+-            <div className="bg-red-50 border border-red-200 text-red-600 rounded-lg px-4 py-3 mb-4 text-sm">
+-              ❌ {error}
++      {/* Company Tab */}
++      {activeTab === "company" && (
++        <div style={card}>
++          <h3
++            style={{
++              fontSize: "14px",
++              fontWeight: 700,
++              color: "#0F2A4A",
++              margin: "0 0 16px",
++            }}
++          >
++            Company Information
++          </h3>
++          <p
++            style={{ fontSize: "12px", color: "#94A3B8", marginBottom: "16px" }}
++          >
++            This info is used as defaults in your reports. You can override
++            per-template in the Templates tab.
++          </p>
++          <div
++            style={{
++              display: "grid",
++              gridTemplateColumns: "1fr 1fr",
++              gap: "14px",
++            }}
++          >
++            {[
++              {
++                label: "Company Name",
++                key: "companyName",
++                placeholder: "Sewer Labz",
++              },
++              {
++                label: "Phone Number",
++                key: "companyPhone",
++                placeholder: "(702) 000-0000",
++              },
++              {
++                label: "Website",
++                key: "companyWebsite",
++                placeholder: "https://sewerlabz.com",
++              },
++            ].map(({ label, key, placeholder }) => (
++              <div key={key}>
++                <label style={lbl}>{label}</label>
++                <input
++                  value={(settings as any)[key]}
++                  onChange={(e) => update(key, e.target.value)}
++                  placeholder={placeholder}
++                  style={inp}
++                />
++              </div>
++            ))}
++            <div style={{ gridColumn: "1 / -1" }}>
++              <label style={lbl}>Company Address</label>
++              <input
++                value={settings.companyAddress}
++                onChange={(e) => update("companyAddress", e.target.value)}
++                placeholder="123 Main St, Las Vegas NV 89101"
++                style={inp}
++              />
+             </div>
+-          )}
++          </div>
++        </div>
++      )}
+ 
+-          {/* Profile Tab */}
+-          {activeTab === 'profile' && (
+-            <div className="bg-white rounded-2xl shadow-sm p-6">
+-              <h3 className="font-bold text-[#0F172A] mb-4">Profile Information</h3>
+-              <form onSubmit={handleUpdateProfile} className="space-y-4">
+-                <div>
+-                  <label className="block text-sm font-medium text-[#0F172A] mb-1">Full Name</label>
+-                  <input
+-                    type="text"
+-                    value={displayName}
+-                    onChange={(e) => setDisplayName(e.target.value)}
+-                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2D8C4A]"
+-                  />
+-                </div>
+-                <div>
+-                  <label className="block text-sm font-medium text-[#0F172A] mb-1">Email Address</label>
+-                  <input
+-                    type="email"
+-                    value={user?.email || ''}
+-                    disabled
+-                    className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm bg-gray-50 text-gray-400 cursor-not-allowed"
+-                  />
+-                  <p className="text-xs text-gray-400 mt-1">Email cannot be changed</p>
+-                </div>
+-                <button
+-                  type="submit"
+-                  disabled={loading}
+-                  className="bg-[#2D8C4A] hover:bg-[#246b3a] text-white font-semibold px-6 py-2.5 rounded-lg text-sm transition-colors disabled:opacity-50"
+-                >
+-                  {loading ? 'Saving...' : 'Save Changes'}
+-                </button>
+-              </form>
++      {/* Subscription Tab */}
++      {activeTab === "subscription" && (
++        <>
++          <div style={card}>
++            <h3
++              style={{
++                fontSize: "14px",
++                fontWeight: 700,
++                color: "#0F2A4A",
++                margin: "0 0 16px",
++              }}
++            >
++              Current Plan
++            </h3>
++            <div
++              style={{
++                display: "flex",
++                alignItems: "center",
++                gap: "16px",
++                marginBottom: "20px",
++              }}
++            >
++              <div
++                style={{
++                  padding: "8px 20px",
++                  borderRadius: "20px",
++                  fontSize: "14px",
++                  fontWeight: 800,
++                  background: plan === "FREE" ? "#F1F5F9" : "#F0FDF4",
++                  color: plan === "FREE" ? "#64748B" : "#16A34A",
++                }}
++              >
++                {plan}
++              </div>
++              <div style={{ fontSize: "13px", color: "#64748B" }}>
++                {plan === "FREE"
++                  ? "Limited to 5 reports per month"
++                  : "Unlimited reports"}
++              </div>
+             </div>
+-          )}
+ 
+-          {/* Password Tab */}
+-          {activeTab === 'password' && (
+-            <div className="bg-white rounded-2xl shadow-sm p-6">
+-              <h3 className="font-bold text-[#0F172A] mb-4">Change Password</h3>
+-              <form onSubmit={handleUpdatePassword} className="space-y-4">
+-                <div>
+-                  <label className="block text-sm font-medium text-[#0F172A] mb-1">New Password</label>
+-                  <input
+-                    type="password"
+-                    value={newPassword}
+-                    onChange={(e) => setNewPassword(e.target.value)}
+-                    placeholder="Min. 8 characters"
+-                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2D8C4A]"
+-                  />
++            {plan === "FREE" && (
++              <div
++                style={{
++                  background:
++                    "linear-gradient(135deg, #0F2A4A 0%, #1e4a7a 100%)",
++                  borderRadius: "10px",
++                  padding: "20px",
++                  color: "#fff",
++                }}
++              >
++                <div
++                  style={{
++                    fontSize: "16px",
++                    fontWeight: 800,
++                    marginBottom: "6px",
++                  }}
++                >
++                  Upgrade to Pro
+                 </div>
+-                <div>
+-                  <label className="block text-sm font-medium text-[#0F172A] mb-1">Confirm New Password</label>
+-                  <input
+-                    type="password"
+-                    value={confirmPassword}
+-                    onChange={(e) => setConfirmPassword(e.target.value)}
+-                    placeholder="••••••••"
+-                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2D8C4A]"
+-                  />
++                <div
++                  style={{
++                    fontSize: "13px",
++                    color: "#CBD5E1",
++                    marginBottom: "16px",
++                    lineHeight: "1.6",
++                  }}
++                >
++                  Unlimited reports · Custom templates · Priority support · PDF
++                  watermark removed
+                 </div>
+                 <button
+-                  type="submit"
+-                  disabled={loading}
+-                  className="bg-[#2D8C4A] hover:bg-[#246b3a] text-white font-semibold px-6 py-2.5 rounded-lg text-sm transition-colors disabled:opacity-50"
++                  style={{
++                    background: "#2D8C4E",
++                    color: "#fff",
++                    border: "none",
++                    borderRadius: "8px",
++                    padding: "10px 24px",
++                    fontSize: "14px",
++                    fontWeight: 700,
++                    cursor: "pointer",
++                  }}
+                 >
+-                  {loading ? 'Updating...' : 'Update Password'}
++                  Subscribe Now
+                 </button>
+-              </form>
+-            </div>
+-          )}
+-
+-          {/* Company Tab */}
+-          {activeTab === 'company' && (
+-            <div className="bg-white rounded-2xl shadow-sm p-6">
+-              <h3 className="font-bold text-[#0F172A] mb-4">Company Information</h3>
+-              <div className="space-y-4">
+-                <div>
+-                  <label className="block text-sm font-medium text-[#0F172A] mb-1">Company Name</label>
+-                  <input
+-                    type="text"
+-                    value={companyName}
+-                    onChange={(e) => setCompanyName(e.target.value)}
+-                    placeholder="LV Sewer Inspections"
+-                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2D8C4A]"
+-                  />
+-                </div>
+-                <div>
+-                  <label className="block text-sm font-medium text-[#0F172A] mb-1">Company Logo</label>
+-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+-                    <p className="text-gray-400 text-sm">Click to upload logo</p>
+-                    <p className="text-gray-300 text-xs mt-1">PNG, JPG up to 2MB</p>
+-                  </div>
+-                </div>
+-                <div>
+-                  <label className="block text-sm font-medium text-[#0F172A] mb-1">Tagline</label>
+-                  <input
+-                    type="text"
+-                    placeholder="Don't Let Your Drain Be A Pain!"
+-                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2D8C4A]"
+-                  />
+-                </div>
+-                <button className="bg-[#2D8C4A] hover:bg-[#246b3a] text-white font-semibold px-6 py-2.5 rounded-lg text-sm transition-colors">
+-                  Save Company Info
+-                </button>
+-              </div>
+-            </div>
+-          )}
+-
+-          {/* Subscription Tab */}
+-          {activeTab === 'subscription' && (
+-            <div className="bg-white rounded-2xl shadow-sm p-6">
+-              <h3 className="font-bold text-[#0F172A] mb-4">Subscription & Billing</h3>
+-
+-              <div className="bg-[#F8FAFC] border border-gray-200 rounded-2xl p-5 mb-6">
+-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+-                  <div>
+-                    <p className="text-sm uppercase tracking-wide text-[#0F172A] font-semibold">Need more reports?</p>
+-                    <p className="text-sm text-gray-600 mt-2">Upgrade to remove limits, add your team, and get priority support.</p>
+-                  </div>
+-                  <button
+-                    type="button"
+-                    onClick={() => setActiveTab('subscription')}
+-                    className="rounded-full bg-[#2D8C4A] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#246b3a]"
+-                  >
+-                    Subscribe now
+-                  </button>
+-                </div>
+-              </div>
+-
+-              {/* Current Plan */}
+-              <div className="border border-[#2D8C4A] rounded-xl p-4 mb-6 bg-[#2D8C4A]/5">
+-                <div className="flex justify-between items-center">
+-                  <div>
+-                    <p className="font-bold text-[#0F172A]">{subscriptionPlan}</p>
+-                    <p className="text-sm text-gray-500">{planTag}</p>
+-                  </div>
+-                  <span className="bg-[#2D8C4A] text-white text-xs px-3 py-1 rounded-full font-medium">Active</span>
+-                </div>
+               </div>
++            )}
++          </div>
+ 
+-              {/* Upgrade Plans */}
+-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+-                <div className="border border-gray-200 rounded-xl p-4">
+-                  <h4 className="font-bold text-[#0F172A] mb-1">Starter</h4>
+-                  <p className="text-2xl font-black text-[#0F2A4A]">$29<span className="text-sm font-normal text-gray-500">/mo</span></p>
+-                  <ul className="text-xs text-gray-600 mt-2 space-y-1">
+-                    <li>✅ 20 reports/month</li>
+-                    <li>✅ Custom branding</li>
+-                    <li>✅ PDF export</li>
+-                  </ul>
+-                  <button className="mt-3 w-full bg-[#0F2A4A] text-white py-2 rounded-lg text-sm font-medium hover:bg-[#1a3a5c] transition-colors">
+-                    Upgrade
+-                  </button>
+-                </div>
+-                <div className="border border-[#2D8C4A] rounded-xl p-4 relative">
+-                  <span className="absolute -top-2 left-3 bg-[#2D8C4A] text-white text-xs px-2 py-0.5 rounded-full">Popular</span>
+-                  <h4 className="font-bold text-[#0F172A] mb-1">Professional</h4>
+-                  <p className="text-2xl font-black text-[#0F2A4A]">$79<span className="text-sm font-normal text-gray-500">/mo</span></p>
+-                  <ul className="text-xs text-gray-600 mt-2 space-y-1">
+-                    <li>✅ Unlimited reports</li>
+-                    <li>✅ Team members</li>
+-                    <li>✅ Priority support</li>
+-                  </ul>
+-                  <button className="mt-3 w-full bg-[#2D8C4A] text-white py-2 rounded-lg text-sm font-medium hover:bg-[#246b3a] transition-colors">
+-                    Upgrade
+-                  </button>
+-                </div>
+-              </div>
++          <div style={card}>
++            <h3
++              style={{
++                fontSize: "14px",
++                fontWeight: 700,
++                color: "#0F2A4A",
++                margin: "0 0 12px",
++              }}
++            >
++              Billing History
++            </h3>
++            <div
++              style={{
++                fontSize: "13px",
++                color: "#94A3B8",
++                padding: "20px",
++                textAlign: "center",
++              }}
++            >
++              No billing history available on the free plan.
+             </div>
+-          )}
+-
+-        </div>
+-      </div>
++          </div>
++        </>
++      )}
+     </div>
+-  )
+-}
+\ No newline at end of file
++  );
++}
