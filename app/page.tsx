@@ -1,154 +1,226 @@
 'use client'
+import { useState } from 'react'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+const stats = [
+  { label: 'Total Reports', value: '0', icon: '📄' },
+  { label: 'Completed This Month', value: '0', icon: '✅' },
+  { label: 'Drafts', value: '0', icon: '📝' },
+  { label: 'Templates Used', value: '0', icon: '📋' },
+]
+
+const reports = [
+  { title: 'Main St Inspection', job: 'JOB-001', client: 'City Council', date: '30 Mar 2026', status: 'Complete' },
+  { title: 'Harbor Rd Survey', job: 'JOB-002', client: 'Port Authority', date: '29 Mar 2026', status: 'Draft' },
+  { title: 'Oak Ave Pipeline', job: 'JOB-003', client: 'Waterworks Ltd', date: '28 Mar 2026', status: 'Draft' },
+  { title: 'Central Park Drain', job: 'JOB-004', client: 'Parks Dept', date: '27 Mar 2026', status: 'Complete' },
+  { title: 'West End Sewer', job: 'JOB-005', client: 'BuildCo', date: '26 Mar 2026', status: 'Archived' },
+]
 
 export default function Dashboard() {
-  const router = useRouter()
-
-  const [user, setUser] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-
-  const [stats] = useState({
-    totalReports: 0,
-    monthReports: 0,
-    drafts: 0,
-    templatesUsed: 0
-  })
-
-  const [reports] = useState<any[]>([])
-
-  // ✅ Load user from localStorage (frontend only auth)
-  useEffect(() => {
-    const storedUser = localStorage.getItem('user')
-
-    if (!storedUser) {
-      router.push('/login')
-    } else {
-      setUser(JSON.parse(storedUser))
-      setLoading(false)
-    }
-  }, [router])
-
-  const handleLogout = () => {
-    localStorage.removeItem('user')
-    router.push('/login')
-  }
-
-  if (loading || !user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-400">Loading...</p>
-      </div>
-    )
-  }
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [trialDismissed, setTrialDismissed] = useState(false)
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex">
+    <div style={{ display: 'flex', minHeight: '100vh', fontFamily: 'Inter, sans-serif', background: '#F8FAFC' }}>
 
       {/* Sidebar */}
-      <div className="w-64 bg-[#0F2A4A] min-h-screen flex flex-col p-6">
-        <div className="mb-8">
-          <h1 className="text-2xl font-black text-white">
-            SEWER <span className="text-[#2D8C4A]">LABZ</span>
-          </h1>
-          <p className="text-xs text-gray-400 mt-1">Professional Reports</p>
+      <div style={{
+        width: sidebarOpen ? '240px' : '0',
+        minHeight: '100vh',
+        background: '#0F2A4A',
+        display: 'flex',
+        flexDirection: 'column',
+        transition: 'width 0.2s',
+        overflow: 'hidden',
+        flexShrink: 0,
+      }}>
+        <div style={{ padding: '24px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)', whiteSpace: 'nowrap' }}>
+          <div style={{ fontSize: '22px', fontWeight: 900 }}>
+            <span style={{ color: '#ffffff' }}>SEWER </span>
+            <span style={{ color: '#2D8C4E' }}>LABZ</span>
+          </div>
+          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', marginTop: '2px' }}>Inspection Platform</div>
         </div>
 
-        <nav className="flex flex-col gap-2 flex-1">
-          <Link href="/" className="text-white bg-white/10 px-4 py-2.5 rounded-lg text-sm">
-            📊 Dashboard
-          </Link>
-          <Link href="/reports/new" className="text-gray-300 hover:text-white hover:bg-white/10 px-4 py-2.5 rounded-lg text-sm">
-            📝 New Report
-          </Link>
-          <Link href="/templates" className="text-gray-300 hover:text-white hover:bg-white/10 px-4 py-2.5 rounded-lg text-sm">
-            📋 Templates
-          </Link>
-          <Link href="/settings" className="text-gray-300 hover:text-white hover:bg-white/10 px-4 py-2.5 rounded-lg text-sm">
-            ⚙️ Settings
-          </Link>
+        <nav style={{ flex: 1, padding: '16px 12px' }}>
+          {[
+            { icon: '⊞', label: 'Dashboard', href: '/', active: true },
+            { icon: '📄', label: 'Reports', href: '/reports/new', active: false },
+            { icon: '📋', label: 'Templates', href: '/templates', active: false },
+            { icon: '⚙️', label: 'Settings', href: '#', active: false },
+          ].map(item => (
+            <div
+              key={item.label}
+              onClick={() => window.location.href = item.href}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '10px',
+                padding: '10px 12px', borderRadius: '8px', marginBottom: '4px',
+                background: item.active ? '#2D8C4E' : 'transparent',
+                color: item.active ? '#fff' : 'rgba(255,255,255,0.65)',
+                cursor: 'pointer', whiteSpace: 'nowrap', fontSize: '14px',
+                fontWeight: item.active ? 600 : 400,
+              }}
+            >
+              <span>{item.icon}</span>
+              <span>{item.label}</span>
+            </div>
+          ))}
         </nav>
 
-        {/* User */}
-        <div className="border-t border-white/10 pt-4 mt-4">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-9 h-9 rounded-full bg-[#2D8C4A] flex items-center justify-center text-white font-bold text-sm">
-              {user.email?.[0]?.toUpperCase()}
-            </div>
+        <div style={{ padding: '16px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{
+              width: '36px', height: '36px', borderRadius: '50%',
+              background: '#2D8C4E', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', color: '#fff', fontWeight: 700,
+              fontSize: '14px', flexShrink: 0,
+            }}>AR</div>
             <div>
-              <p className="text-white text-xs font-medium">
-                {user.email || 'Demo User'}
-              </p>
-              <p className="text-gray-400 text-xs">
-                Frontend Mode
-              </p>
+              <div style={{ color: '#fff', fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap' }}>Ajay Raymon</div>
+              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '11px' }}>Admin</div>
             </div>
           </div>
-
-          <button
-            onClick={handleLogout}
-            className="w-full text-red-400 hover:text-red-300 hover:bg-red-400/10 px-4 py-2 rounded-lg text-sm text-left"
-          >
-            🚪 Logout
-          </button>
+          <button style={{
+            marginTop: '12px', width: '100%', padding: '8px', borderRadius: '6px',
+            background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)',
+            fontSize: '12px', textAlign: 'center', cursor: 'pointer', border: 'none',
+          }}>Logout</button>
         </div>
       </div>
 
-      {/* Main */}
-      <div className="flex-1 p-8">
+      {/* Main content */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
 
-        {/* Header */}
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h2 className="text-2xl font-bold text-[#0F172A]">
-              Welcome back 👋
-            </h2>
-            <p className="text-gray-500 text-sm mt-1">
-              Frontend preview mode
-            </p>
+        {/* Top bar */}
+        <div style={{
+          background: '#fff', borderBottom: '1px solid #E2E8F0',
+          padding: '16px 24px', display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 10,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <button onClick={() => setSidebarOpen(!sidebarOpen)} style={{
+              background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#64748B',
+            }}>☰</button>
+            <h1 style={{ fontSize: '18px', fontWeight: 700, color: '#0F2A4A', margin: 0 }}>Dashboard</h1>
           </div>
-
-          <Link
-            href="/reports/new"
-            className="bg-[#2D8C4A] text-white px-5 py-2.5 rounded-lg text-sm"
-          >
-            + New Report
-          </Link>
+          <button onClick={() => window.location.href = '/reports/new'} style={{
+            background: '#2D8C4E', color: '#fff', border: 'none',
+            padding: '9px 18px', borderRadius: '8px', fontSize: '14px',
+            fontWeight: 600, cursor: 'pointer',
+          }}>+ New Report</button>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-4 gap-4 mb-8">
-          <div className="bg-white p-5 rounded-2xl">
-            <p className="text-xs text-gray-500">Total Reports</p>
-            <p className="text-3xl font-bold">{stats.totalReports}</p>
+        {/* Trial banner */}
+        {!trialDismissed && (
+          <div style={{
+            background: '#FFFBEB', borderBottom: '1px solid #FDE68A',
+            padding: '10px 24px', display: 'flex',
+            alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <span style={{ color: '#92400E', fontSize: '14px' }}>
+              ⚠️ You have <strong>5 days</strong> left on your free trial.
+            </span>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <button
+                onClick={() => window.location.href = '/subscribe'}
+                style={{
+                  background: '#2D8C4E', color: '#fff', border: 'none',
+                  padding: '6px 14px', borderRadius: '6px',
+                  fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+                }}
+              >Subscribe Now</button>
+              <button
+                onClick={() => setTrialDismissed(true)}
+                style={{
+                  background: 'none', border: 'none',
+                  color: '#92400E', fontSize: '18px',
+                  cursor: 'pointer', lineHeight: 1,
+                }}
+              >×</button>
+            </div>
+          </div>
+        )}
+
+        {/* Content */}
+        <div style={{ padding: '24px', flex: 1 }}>
+
+          {/* Stats */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
+            {stats.map(stat => (
+              <div key={stat.label} style={{
+                background: '#fff', border: '1px solid #E2E8F0',
+                borderRadius: '12px', padding: '20px',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              }}>
+                <div>
+                  <div style={{ fontSize: '13px', color: '#64748B', marginBottom: '6px' }}>{stat.label}</div>
+                  <div style={{ fontSize: '28px', fontWeight: 700, color: '#0F2A4A' }}>{stat.value}</div>
+                </div>
+                <div style={{
+                  width: '44px', height: '44px', borderRadius: '10px',
+                  background: '#E8F5EE', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center', fontSize: '20px',
+                }}>{stat.icon}</div>
+              </div>
+            ))}
           </div>
 
-          <div className="bg-white p-5 rounded-2xl">
-            <p className="text-xs text-gray-500">This Month</p>
-            <p className="text-3xl font-bold">{stats.monthReports}</p>
-          </div>
-
-          <div className="bg-white p-5 rounded-2xl">
-            <p className="text-xs text-gray-500">Drafts</p>
-            <p className="text-3xl font-bold">{stats.drafts}</p>
-          </div>
-
-          <div className="bg-white p-5 rounded-2xl">
-            <p className="text-xs text-gray-500">Templates</p>
-            <p className="text-3xl font-bold">{stats.templatesUsed}</p>
+          {/* Table */}
+          <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: '12px', overflow: 'hidden' }}>
+            <div style={{
+              padding: '16px 20px', borderBottom: '1px solid #E2E8F0',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            }}>
+              <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#0F2A4A', margin: 0 }}>Recent Reports</h2>
+              <span style={{ fontSize: '13px', color: '#2D8C4E', cursor: 'pointer', fontWeight: 500 }}>View all →</span>
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#F8FAFC' }}>
+                  {['Report Title', 'Job #', 'Client', 'Date', 'Status', 'Actions'].map(h => (
+                    <th key={h} style={{
+                      padding: '12px 20px', textAlign: 'left', fontSize: '12px',
+                      fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em',
+                    }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {reports.map((r, i) => (
+                  <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
+                    <td style={{ padding: '14px 20px', fontSize: '14px', fontWeight: 600, color: '#0F2A4A' }}>{r.title}</td>
+                    <td style={{ padding: '14px 20px', fontSize: '14px', color: '#64748B' }}>{r.job}</td>
+                    <td style={{ padding: '14px 20px', fontSize: '14px', color: '#64748B' }}>{r.client}</td>
+                    <td style={{ padding: '14px 20px', fontSize: '14px', color: '#64748B' }}>{r.date}</td>
+                    <td style={{ padding: '14px 20px' }}>
+                      <span style={{
+                        padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 600,
+                        background: r.status === 'Complete' ? '#E8F5EE' : r.status === 'Draft' ? '#F1F5F9' : '#EFF6FF',
+                        color: r.status === 'Complete' ? '#2D8C4E' : r.status === 'Draft' ? '#64748B' : '#0F2A4A',
+                      }}>{r.status}</span>
+                    </td>
+                    <td style={{ padding: '14px 20px' }}>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        {['View', 'Edit'].map(action => (
+                          <button key={action} style={{
+                            background: 'none', border: '1px solid #E2E8F0',
+                            borderRadius: '6px', padding: '5px 10px',
+                            fontSize: '12px', cursor: 'pointer', color: '#64748B', fontWeight: 500,
+                          }}>{action}</button>
+                        ))}
+                        <button style={{
+                          background: '#2D8C4E', border: 'none', borderRadius: '6px',
+                          padding: '5px 10px', fontSize: '12px', cursor: 'pointer',
+                          color: '#fff', fontWeight: 500,
+                        }}>PDF</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
-
-        {/* Empty State */}
-        <div className="bg-white p-10 rounded-2xl text-center">
-          <p className="text-4xl mb-3">📋</p>
-          <p className="text-gray-500">
-            No reports yet (frontend mode)
-          </p>
-        </div>
-
       </div>
     </div>
   )

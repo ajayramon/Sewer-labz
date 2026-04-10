@@ -1,357 +1,515 @@
-'use client'
+"use client";
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { auth } from '@/app/Lib/firebase'
-import { updatePassword, updateProfile, signOut } from 'firebase/auth'
-import Link from 'next/link'
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+
+type UserSettings = {
+  email: string;
+  fullName: string;
+  companyName: string;
+  companyPhone: string;
+  companyAddress: string;
+  companyWebsite: string;
+  licenseNumber: string;
+};
 
 export default function SettingsPage() {
-  const router = useRouter()
-  const [user, setUser] = useState<any>(null)
-  const [activeTab, setActiveTab] = useState('profile')
-  const [displayName, setDisplayName] = useState('')
-  const [companyName, setCompanyName] = useState('')
-  const [newPassword, setNewPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const subscriptionPlan = 'Free Plan'
-  const planTag = '5 reports per month'
-  const [success, setSuccess] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+  const router = useRouter();
+  const [activeTab, setActiveTab] = useState<
+    "account" | "company" | "subscription"
+  >("account");
+  const [settings, setSettings] = useState<UserSettings>({
+    email: "",
+    fullName: "",
+    companyName: "",
+    companyPhone: "",
+    companyAddress: "",
+    companyWebsite: "",
+    licenseNumber: "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [plan] = useState("FREE");
 
+  // ✅ FIX 1 — Properly merge user email + saved settings without overwriting
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (!user) {
-        router.push('/login')
-      } else {
-        setUser(user)
-        setDisplayName(user.displayName || '')
+    const stored = localStorage.getItem("user");
+    const savedSettings = localStorage.getItem("sewer_settings");
+
+    if (savedSettings) {
+      const parsed = JSON.parse(savedSettings);
+      // Pull email from user if missing in saved settings
+      if (stored && !parsed.email) {
+        parsed.email = JSON.parse(stored).email || "";
       }
-    })
-    return () => unsubscribe()
-  }, [router])
+      setSettings(parsed);
+    } else if (stored) {
+      const u = JSON.parse(stored);
+      setSettings((p) => ({ ...p, email: u.email || "" }));
+    }
+  }, []);
 
-  const handleUpdateProfile = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    setSuccess('')
-    setLoading(true)
+  const update = (k: string, v: string) =>
+    setSettings((p) => ({ ...p, [k]: v }));
+
+  const handleSave = async () => {
+    setSaving(true);
     try {
-      await updateProfile(user, { displayName })
-      setSuccess('Profile updated successfully!')
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings),
+      });
+      if (!res.ok) throw new Error("API failed");
     } catch (err) {
-      setError('Failed to update profile.')
-    } finally {
-      setLoading(false)
+      console.error("Settings API error:", err);
     }
-  }
+    // Always save to localStorage as fallback
+    localStorage.setItem("sewer_settings", JSON.stringify(settings));
+    setSaving(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  };
 
-  const handleUpdatePassword = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    setSuccess('')
-    if (newPassword !== confirmPassword) {
-      setError('Passwords do not match.')
-      return
-    }
-    if (newPassword.length < 8) {
-      setError('Password must be at least 8 characters.')
-      return
-    }
-    setLoading(true)
-    try {
-      await updatePassword(user, newPassword)
-      setSuccess('Password updated successfully!')
-      setNewPassword('')
-      setConfirmPassword('')
-    } catch (err) {
-      setError('Failed to update password. Please log out and log in again first.')
-    } finally {
-      setLoading(false)
-    }
-  }
+  const handleLogout = () => {
+    localStorage.removeItem("user");
+    router.replace("/login");
+  };
 
-  const handleLogout = async () => {
-    await signOut(auth)
-    router.push('/login')
-  }
+  const inp: React.CSSProperties = {
+    height: "36px",
+    borderRadius: "6px",
+    border: "1px solid #E2E8F0",
+    padding: "0 10px",
+    fontSize: "13px",
+    outline: "none",
+    boxSizing: "border-box",
+    background: "#F8FAFC",
+    width: "100%",
+  };
 
-  const tabs = [
-    { id: 'profile', label: '👤 Profile' },
-    { id: 'password', label: '🔒 Password' },
-    { id: 'company', label: '🏢 Company' },
-    { id: 'subscription', label: '💳 Subscription' },
-  ]
+  const lbl: React.CSSProperties = {
+    display: "block",
+    fontSize: "11px",
+    fontWeight: 600,
+    color: "#64748B",
+    marginBottom: "4px",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+  };
+
+  const card: React.CSSProperties = {
+    background: "#fff",
+    border: "1px solid #E2E8F0",
+    borderRadius: "12px",
+    padding: "24px",
+    marginBottom: "16px",
+  };
+
+  const tab = (active: boolean): React.CSSProperties => ({
+    padding: "8px 18px",
+    borderRadius: "6px",
+    fontSize: "13px",
+    fontWeight: 600,
+    cursor: "pointer",
+    border: "none",
+    background: active ? "#0F2A4A" : "transparent",
+    color: active ? "#fff" : "#64748B",
+  });
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex">
-
-      {/* Sidebar */}
-      <div className="w-64 bg-[#0F2A4A] min-h-screen flex flex-col p-6">
-        <div className="mb-8">
-          <h1 className="text-2xl font-black text-white">
-            SEWER <span className="text-[#2D8C4A]">LABZ</span>
+    <div
+      style={{
+        padding: "24px",
+        maxWidth: "800px",
+        margin: "0 auto",
+        fontFamily: "Inter, Arial, sans-serif",
+      }}
+    >
+      {/* Header */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "24px",
+        }}
+      >
+        <div>
+          <h1
+            style={{
+              fontSize: "22px",
+              fontWeight: 800,
+              color: "#0F2A4A",
+              margin: 0,
+            }}
+          >
+            Settings
           </h1>
-          <p className="text-xs text-gray-400 mt-1">Professional Reports</p>
+          <p style={{ fontSize: "13px", color: "#94A3B8", marginTop: "4px" }}>
+            Manage your account and preferences
+          </p>
         </div>
+        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+          {saved && (
+            <span
+              style={{ fontSize: "13px", color: "#16A34A", fontWeight: 600 }}
+            >
+              ✓ Saved
+            </span>
+          )}
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            style={{
+              background: saving ? "#94A3B8" : "#2D8C4E",
+              color: "#fff",
+              border: "none",
+              borderRadius: "8px",
+              padding: "8px 20px",
+              fontSize: "13px",
+              fontWeight: 700,
+              cursor: saving ? "not-allowed" : "pointer",
+            }}
+          >
+            {saving ? "Saving..." : "Save Changes"}
+          </button>
+        </div>
+      </div>
 
-        <nav className="flex flex-col gap-2 flex-1">
-          <Link href="/" className="text-gray-300 hover:text-white hover:bg-white/10 px-4 py-2.5 rounded-lg text-sm transition-colors">
-            📊 Dashboard
-          </Link>
-          <Link href="/reports/new" className="text-gray-300 hover:text-white hover:bg-white/10 px-4 py-2.5 rounded-lg text-sm transition-colors">
-            📝 New Report
-          </Link>
-          <Link href="/templates" className="text-gray-300 hover:text-white hover:bg-white/10 px-4 py-2.5 rounded-lg text-sm transition-colors">
-            📋 Templates
-          </Link>
-          <Link href="/settings" className="text-white bg-white/10 px-4 py-2.5 rounded-lg text-sm">
-            ⚙️ Settings
-          </Link>
-        </nav>
-
+      {/* Tabs */}
+      <div
+        style={{
+          display: "flex",
+          gap: "4px",
+          marginBottom: "20px",
+          background: "#fff",
+          padding: "8px",
+          borderRadius: "10px",
+          border: "1px solid #E2E8F0",
+        }}
+      >
         <button
-          onClick={handleLogout}
-          className="mt-auto text-red-400 hover:text-red-300 hover:bg-red-400/10 px-4 py-2.5 rounded-lg text-sm transition-colors text-left"
+          style={tab(activeTab === "account")}
+          onClick={() => setActiveTab("account")}
         >
-          🚪 Logout
+          👤 Account
+        </button>
+        <button
+          style={tab(activeTab === "company")}
+          onClick={() => setActiveTab("company")}
+        >
+          🏢 Company
+        </button>
+        <button
+          style={tab(activeTab === "subscription")}
+          onClick={() => setActiveTab("subscription")}
+        >
+          💳 Subscription
         </button>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 p-8">
-        <div className="max-w-2xl mx-auto">
-
-          {/* Header */}
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold text-[#0F172A]">Settings</h2>
-            <p className="text-gray-500 text-sm mt-1">Manage your account and preferences</p>
-          </div>
-
-          {/* User Info Card */}
-          <div className="bg-white rounded-2xl shadow-sm p-6 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-[#0F2A4A] flex items-center justify-center text-white text-2xl font-bold">
-                {user?.displayName ? user.displayName[0].toUpperCase() : user?.email?.[0].toUpperCase()}
+      {/* Account Tab */}
+      {activeTab === "account" && (
+        <>
+          <div style={card}>
+            <h3
+              style={{
+                fontSize: "14px",
+                fontWeight: 700,
+                color: "#0F2A4A",
+                margin: "0 0 16px",
+              }}
+            >
+              Account Information
+            </h3>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "14px",
+              }}
+            >
+              <div>
+                <label style={lbl}>Full Name</label>
+                <input
+                  value={settings.fullName}
+                  onChange={(e) => update("fullName", e.target.value)}
+                  placeholder="Your full name"
+                  style={inp}
+                />
               </div>
               <div>
-                <h3 className="font-bold text-[#0F172A] text-lg">{user?.displayName || 'User'}</h3>
-                <p className="text-gray-500 text-sm">{user?.email}</p>
-                <p className="text-xs text-gray-400 mt-2">{subscriptionPlan} • {planTag}</p>
+                <label style={lbl}>Email Address</label>
+                <input
+                  value={settings.email}
+                  onChange={(e) => update("email", e.target.value)}
+                  placeholder="you@example.com"
+                  style={{ ...inp, color: "#94A3B8" }}
+                  disabled
+                />
+              </div>
+              <div>
+                <label style={lbl}>License Number</label>
+                <input
+                  value={settings.licenseNumber}
+                  onChange={(e) => update("licenseNumber", e.target.value)}
+                  placeholder="Inspector license #"
+                  style={inp}
+                />
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => setActiveTab('subscription')}
-              className="inline-flex items-center justify-center rounded-full bg-[#2D8C4A] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#246b3a]"
+          </div>
+
+          <div style={card}>
+            <h3
+              style={{
+                fontSize: "14px",
+                fontWeight: 700,
+                color: "#0F2A4A",
+                margin: "0 0 16px",
+              }}
             >
-              Subscribe
+              Security
+            </h3>
+            <div
+              style={{
+                padding: "12px",
+                background: "#F8FAFC",
+                borderRadius: "8px",
+                fontSize: "13px",
+                color: "#64748B",
+                marginBottom: "12px",
+              }}
+            >
+              Password reset is handled via email. Click below to receive a
+              reset link.
+            </div>
+            <button
+              style={{
+                padding: "8px 18px",
+                borderRadius: "6px",
+                border: "1px solid #E2E8F0",
+                background: "#fff",
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor: "pointer",
+                color: "#0F2A4A",
+              }}
+            >
+              Send Password Reset Email
             </button>
           </div>
 
-          {/* Tabs */}
-          <div className="flex gap-2 mb-6 bg-white rounded-xl p-1 shadow-sm">
-            {tabs.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => { setActiveTab(tab.id); setError(''); setSuccess('') }}
-                className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
-                  activeTab === tab.id
-                    ? 'bg-[#0F2A4A] text-white'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {tab.label}
-              </button>
+          <div style={card}>
+            <h3
+              style={{
+                fontSize: "14px",
+                fontWeight: 700,
+                color: "#DC2626",
+                margin: "0 0 12px",
+              }}
+            >
+              Danger Zone
+            </h3>
+            <button
+              onClick={handleLogout}
+              style={{
+                padding: "8px 18px",
+                borderRadius: "6px",
+                border: "none",
+                background: "#FEF2F2",
+                color: "#DC2626",
+                fontSize: "13px",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Sign Out
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Company Tab */}
+      {activeTab === "company" && (
+        <div style={card}>
+          <h3
+            style={{
+              fontSize: "14px",
+              fontWeight: 700,
+              color: "#0F2A4A",
+              margin: "0 0 16px",
+            }}
+          >
+            Company Information
+          </h3>
+          <p
+            style={{ fontSize: "12px", color: "#94A3B8", marginBottom: "16px" }}
+          >
+            This info is used as defaults in your reports. You can override
+            per-template in the Templates tab.
+          </p>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "14px",
+            }}
+          >
+            {[
+              {
+                label: "Company Name",
+                key: "companyName",
+                placeholder: "Sewer Labz",
+              },
+              {
+                label: "Phone Number",
+                key: "companyPhone",
+                placeholder: "(702) 000-0000",
+              },
+              {
+                label: "Website",
+                key: "companyWebsite",
+                placeholder: "https://sewerlabz.com",
+              },
+            ].map(({ label, key, placeholder }) => (
+              <div key={key}>
+                <label style={lbl}>{label}</label>
+                <input
+                  value={(settings as any)[key]}
+                  onChange={(e) => update(key, e.target.value)}
+                  placeholder={placeholder}
+                  style={inp}
+                />
+              </div>
             ))}
+            <div style={{ gridColumn: "1 / -1" }}>
+              <label style={lbl}>Company Address</label>
+              <input
+                value={settings.companyAddress}
+                onChange={(e) => update("companyAddress", e.target.value)}
+                placeholder="123 Main St, Las Vegas NV 89101"
+                style={inp}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Subscription Tab */}
+      {activeTab === "subscription" && (
+        <>
+          <div style={card}>
+            <h3
+              style={{
+                fontSize: "14px",
+                fontWeight: 700,
+                color: "#0F2A4A",
+                margin: "0 0 16px",
+              }}
+            >
+              Current Plan
+            </h3>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "16px",
+                marginBottom: "20px",
+              }}
+            >
+              <div
+                style={{
+                  padding: "8px 20px",
+                  borderRadius: "20px",
+                  fontSize: "14px",
+                  fontWeight: 800,
+                  background: plan === "FREE" ? "#F1F5F9" : "#F0FDF4",
+                  color: plan === "FREE" ? "#64748B" : "#16A34A",
+                }}
+              >
+                {plan}
+              </div>
+              <div style={{ fontSize: "13px", color: "#64748B" }}>
+                {plan === "FREE"
+                  ? "Limited to 5 reports per month"
+                  : "Unlimited reports"}
+              </div>
+            </div>
+
+            {plan === "FREE" && (
+              <div
+                style={{
+                  background:
+                    "linear-gradient(135deg, #0F2A4A 0%, #1e4a7a 100%)",
+                  borderRadius: "10px",
+                  padding: "20px",
+                  color: "#fff",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: 800,
+                    marginBottom: "6px",
+                  }}
+                >
+                  Upgrade to Pro
+                </div>
+                <div
+                  style={{
+                    fontSize: "13px",
+                    color: "#CBD5E1",
+                    marginBottom: "16px",
+                    lineHeight: "1.6",
+                  }}
+                >
+                  Unlimited reports · Custom templates · Priority support · PDF
+                  watermark removed
+                </div>
+                <button
+                  style={{
+                    background: "#2D8C4E",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: "8px",
+                    padding: "10px 24px",
+                    fontSize: "14px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  Subscribe Now
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* Success/Error */}
-          {success && (
-            <div className="bg-green-50 border border-green-200 text-green-700 rounded-lg px-4 py-3 mb-4 text-sm">
-              ✅ {success}
+          <div style={card}>
+            <h3
+              style={{
+                fontSize: "14px",
+                fontWeight: 700,
+                color: "#0F2A4A",
+                margin: "0 0 12px",
+              }}
+            >
+              Billing History
+            </h3>
+            <div
+              style={{
+                fontSize: "13px",
+                color: "#94A3B8",
+                padding: "20px",
+                textAlign: "center",
+              }}
+            >
+              No billing history available on the free plan.
             </div>
-          )}
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-600 rounded-lg px-4 py-3 mb-4 text-sm">
-              ❌ {error}
-            </div>
-          )}
-
-          {/* Profile Tab */}
-          {activeTab === 'profile' && (
-            <div className="bg-white rounded-2xl shadow-sm p-6">
-              <h3 className="font-bold text-[#0F172A] mb-4">Profile Information</h3>
-              <form onSubmit={handleUpdateProfile} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-[#0F172A] mb-1">Full Name</label>
-                  <input
-                    type="text"
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2D8C4A]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-[#0F172A] mb-1">Email Address</label>
-                  <input
-                    type="email"
-                    value={user?.email || ''}
-                    disabled
-                    className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm bg-gray-50 text-gray-400 cursor-not-allowed"
-                  />
-                  <p className="text-xs text-gray-400 mt-1">Email cannot be changed</p>
-                </div>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="bg-[#2D8C4A] hover:bg-[#246b3a] text-white font-semibold px-6 py-2.5 rounded-lg text-sm transition-colors disabled:opacity-50"
-                >
-                  {loading ? 'Saving...' : 'Save Changes'}
-                </button>
-              </form>
-            </div>
-          )}
-
-          {/* Password Tab */}
-          {activeTab === 'password' && (
-            <div className="bg-white rounded-2xl shadow-sm p-6">
-              <h3 className="font-bold text-[#0F172A] mb-4">Change Password</h3>
-              <form onSubmit={handleUpdatePassword} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-[#0F172A] mb-1">New Password</label>
-                  <input
-                    type="password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Min. 8 characters"
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2D8C4A]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-[#0F172A] mb-1">Confirm New Password</label>
-                  <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2D8C4A]"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="bg-[#2D8C4A] hover:bg-[#246b3a] text-white font-semibold px-6 py-2.5 rounded-lg text-sm transition-colors disabled:opacity-50"
-                >
-                  {loading ? 'Updating...' : 'Update Password'}
-                </button>
-              </form>
-            </div>
-          )}
-
-          {/* Company Tab */}
-          {activeTab === 'company' && (
-            <div className="bg-white rounded-2xl shadow-sm p-6">
-              <h3 className="font-bold text-[#0F172A] mb-4">Company Information</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-[#0F172A] mb-1">Company Name</label>
-                  <input
-                    type="text"
-                    value={companyName}
-                    onChange={(e) => setCompanyName(e.target.value)}
-                    placeholder="LV Sewer Inspections"
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2D8C4A]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-[#0F172A] mb-1">Company Logo</label>
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                    <p className="text-gray-400 text-sm">Click to upload logo</p>
-                    <p className="text-gray-300 text-xs mt-1">PNG, JPG up to 2MB</p>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-[#0F172A] mb-1">Tagline</label>
-                  <input
-                    type="text"
-                    placeholder="Don't Let Your Drain Be A Pain!"
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2D8C4A]"
-                  />
-                </div>
-                <button className="bg-[#2D8C4A] hover:bg-[#246b3a] text-white font-semibold px-6 py-2.5 rounded-lg text-sm transition-colors">
-                  Save Company Info
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Subscription Tab */}
-          {activeTab === 'subscription' && (
-            <div className="bg-white rounded-2xl shadow-sm p-6">
-              <h3 className="font-bold text-[#0F172A] mb-4">Subscription & Billing</h3>
-
-              <div className="bg-[#F8FAFC] border border-gray-200 rounded-2xl p-5 mb-6">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <div>
-                    <p className="text-sm uppercase tracking-wide text-[#0F172A] font-semibold">Need more reports?</p>
-                    <p className="text-sm text-gray-600 mt-2">Upgrade to remove limits, add your team, and get priority support.</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('subscription')}
-                    className="rounded-full bg-[#2D8C4A] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#246b3a]"
-                  >
-                    Subscribe now
-                  </button>
-                </div>
-              </div>
-
-              {/* Current Plan */}
-              <div className="border border-[#2D8C4A] rounded-xl p-4 mb-6 bg-[#2D8C4A]/5">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <p className="font-bold text-[#0F172A]">{subscriptionPlan}</p>
-                    <p className="text-sm text-gray-500">{planTag}</p>
-                  </div>
-                  <span className="bg-[#2D8C4A] text-white text-xs px-3 py-1 rounded-full font-medium">Active</span>
-                </div>
-              </div>
-
-              {/* Upgrade Plans */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="border border-gray-200 rounded-xl p-4">
-                  <h4 className="font-bold text-[#0F172A] mb-1">Starter</h4>
-                  <p className="text-2xl font-black text-[#0F2A4A]">$29<span className="text-sm font-normal text-gray-500">/mo</span></p>
-                  <ul className="text-xs text-gray-600 mt-2 space-y-1">
-                    <li>✅ 20 reports/month</li>
-                    <li>✅ Custom branding</li>
-                    <li>✅ PDF export</li>
-                  </ul>
-                  <button className="mt-3 w-full bg-[#0F2A4A] text-white py-2 rounded-lg text-sm font-medium hover:bg-[#1a3a5c] transition-colors">
-                    Upgrade
-                  </button>
-                </div>
-                <div className="border border-[#2D8C4A] rounded-xl p-4 relative">
-                  <span className="absolute -top-2 left-3 bg-[#2D8C4A] text-white text-xs px-2 py-0.5 rounded-full">Popular</span>
-                  <h4 className="font-bold text-[#0F172A] mb-1">Professional</h4>
-                  <p className="text-2xl font-black text-[#0F2A4A]">$79<span className="text-sm font-normal text-gray-500">/mo</span></p>
-                  <ul className="text-xs text-gray-600 mt-2 space-y-1">
-                    <li>✅ Unlimited reports</li>
-                    <li>✅ Team members</li>
-                    <li>✅ Priority support</li>
-                  </ul>
-                  <button className="mt-3 w-full bg-[#2D8C4A] text-white py-2 rounded-lg text-sm font-medium hover:bg-[#246b3a] transition-colors">
-                    Upgrade
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-        </div>
-      </div>
+          </div>
+        </>
+      )}
     </div>
-  )
+  );
 }
