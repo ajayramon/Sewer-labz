@@ -1,778 +1,166 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import { useRouter, usePathname } from "next/navigation";
+import Link from "next/link";
 
-type CustomDropdown = { label: string; options: string[] };
+// Pages that don't require auth
+const PUBLIC_PATHS = ["/login", "/signup"];
 
-type Template = {
-  id: string;
-  name: string;
-  companyName: string;
-  companyTagline: string;
-  companyLogo: string;
-  statementOfService: string;
-  includeDefectGraphic: boolean;
-  showSuggestedMaintenance: boolean;
-  customDropdowns: CustomDropdown[];
-  createdAt: string;
-};
-
-const emptyTemplate = (): Omit<Template, "id" | "createdAt"> => ({
-  name: "",
-  companyName: "Sewer Labz",
-  companyTagline: "Don't Let Your Drain Be A Pain!",
-  companyLogo: "",
-  statementOfService:
-    "Sewer Labz is a professional sewer inspection company. All inspections are performed in accordance with industry standards using professional-grade CCTV camera equipment.",
-  includeDefectGraphic: true,
-  showSuggestedMaintenance: true,
-  customDropdowns: [],
-});
-
-export default function TemplatesPage() {
-  const [templates, setTemplates] = useState<Template[]>([]);
-  const [editing, setEditing] = useState<Partial<Template> | null>(null);
-  const [isNew, setIsNew] = useState(false);
-  const [saving, setSaving] = useState(false);
+export default function AuthLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [checked, setChecked] = useState(false);
+  const [user, setUser] = useState<{ email: string } | null>(null);
 
   useEffect(() => {
-    fetchTemplates();
-  }, []);
+    const stored = localStorage.getItem("user");
+    const isPublic = PUBLIC_PATHS.some((p) => pathname?.endsWith(p));
 
-  const fetchTemplates = async () => {
-    try {
-      const res = await fetch("/api/templates");
-      const data = await res.json();
-      setTemplates(data.templates || []);
-    } catch {
-      // Load from localStorage fallback
-      const local = localStorage.getItem("sewer_templates");
-      if (local) setTemplates(JSON.parse(local));
-    }
-  };
-
-  const handleNew = () => {
-    setEditing(emptyTemplate());
-    setIsNew(true);
-  };
-
-  const handleEdit = (t: Template) => {
-    setEditing({ ...t });
-    setIsNew(false);
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm("Delete this template?")) return;
-    try {
-      await fetch(`/api/templates/${id}`, { method: "DELETE" });
-    } catch {}
-    const updated = templates.filter((t) => t.id !== id);
-    setTemplates(updated);
-    localStorage.setItem("sewer_templates", JSON.stringify(updated));
-  };
-
-  const handleSave = async () => {
-    if (!editing?.name?.trim()) {
-      alert("Template name is required");
+    if (!stored && !isPublic) {
+      router.replace("/login");
       return;
     }
-    setSaving(true);
-    try {
-      let saved: Template;
-      if (isNew) {
-        const res = await fetch("/api/templates", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(editing),
-        });
-        saved = await res.json();
-        setTemplates((p) => {
-          const updated = [...p, saved];
-          localStorage.setItem("sewer_templates", JSON.stringify(updated));
-          return updated;
-        });
-      } else {
-        const res = await fetch(`/api/templates/${editing.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(editing),
-        });
-        saved = await res.json();
-        setTemplates((p) => {
-          const updated = p.map((t) => (t.id === saved.id ? saved : t));
-          localStorage.setItem("sewer_templates", JSON.stringify(updated));
-          return updated;
-        });
-      }
-      setEditing(null);
-    } catch {
-      // Fallback: save to localStorage
-      const fallback: Template = {
-        ...(editing as Template),
-        id: editing.id || Date.now().toString(),
-        createdAt: new Date().toISOString(),
-      };
-      const updated = isNew
-        ? [...templates, fallback]
-        : templates.map((t) => (t.id === fallback.id ? fallback : t));
-      setTemplates(updated);
-      localStorage.setItem("sewer_templates", JSON.stringify(updated));
-      setEditing(null);
-    } finally {
-      setSaving(false);
-    }
+
+    if (stored) setUser(JSON.parse(stored));
+    setChecked(true);
+  }, [pathname]);
+
+  const handleLogout = () => {
+    localStorage.removeItem("user");
+    router.replace("/login");
   };
 
-  const updateEditing = (k: string, v: any) =>
-    setEditing((p) => (p ? { ...p, [k]: v } : p));
-
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) =>
-      updateEditing("companyLogo", ev.target?.result as string);
-    reader.readAsDataURL(file);
-  };
-
-  // Custom dropdown builder
-  const addDropdown = () => {
-    const current = editing?.customDropdowns || [];
-    updateEditing("customDropdowns", [
-      ...current,
-      { label: "", options: [""] },
-    ]);
-  };
-
-  const updateDropdownLabel = (i: number, val: string) => {
-    const arr = [...(editing?.customDropdowns || [])];
-    arr[i] = { ...arr[i], label: val };
-    updateEditing("customDropdowns", arr);
-  };
-
-  const addDropdownOption = (i: number) => {
-    const arr = [...(editing?.customDropdowns || [])];
-    arr[i] = { ...arr[i], options: [...arr[i].options, ""] };
-    updateEditing("customDropdowns", arr);
-  };
-
-  const updateDropdownOption = (di: number, oi: number, val: string) => {
-    const arr = [...(editing?.customDropdowns || [])];
-    const opts = [...arr[di].options];
-    opts[oi] = val;
-    arr[di] = { ...arr[di], options: opts };
-    updateEditing("customDropdowns", arr);
-  };
-
-  const removeDropdownOption = (di: number, oi: number) => {
-    const arr = [...(editing?.customDropdowns || [])];
-    arr[di] = {
-      ...arr[di],
-      options: arr[di].options.filter((_, i) => i !== oi),
-    };
-    updateEditing("customDropdowns", arr);
-  };
-
-  const removeDropdown = (i: number) => {
-    updateEditing(
-      "customDropdowns",
-      (editing?.customDropdowns || []).filter((_, idx) => idx !== i),
-    );
-  };
-
-  const inp: React.CSSProperties = {
-    height: "36px",
-    borderRadius: "6px",
-    border: "1px solid #E2E8F0",
-    padding: "0 10px",
-    fontSize: "13px",
-    outline: "none",
-    boxSizing: "border-box",
-    background: "#F8FAFC",
-    width: "100%",
-  };
-
-  const lbl: React.CSSProperties = {
-    display: "block",
-    fontSize: "11px",
-    fontWeight: 600,
-    color: "#64748B",
-    marginBottom: "4px",
-    textTransform: "uppercase",
-    letterSpacing: "0.05em",
-  };
-
-  const card: React.CSSProperties = {
-    background: "#fff",
-    border: "1px solid #E2E8F0",
-    borderRadius: "12px",
-    padding: "20px",
-    marginBottom: "16px",
-  };
-
-  // ── Editor view ────────────────────────────────────────────────
-  if (editing !== null)
+  // Don't render anything until auth check is done
+  if (!checked) {
     return (
       <div
         style={{
-          padding: "24px",
-          maxWidth: "800px",
-          margin: "0 auto",
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "#F8FAFC",
           fontFamily: "Inter, Arial, sans-serif",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: "24px",
-          }}
-        >
-          <h1
-            style={{
-              fontSize: "20px",
-              fontWeight: 800,
-              color: "#0F2A4A",
-              margin: 0,
-            }}
+        <div style={{ textAlign: "center" }}>
+          <div
+            style={{ fontSize: "24px", fontWeight: 900, marginBottom: "8px" }}
           >
-            {isNew ? "New Template" : "Edit Template"}
-          </h1>
-          <div style={{ display: "flex", gap: "10px" }}>
-            <button
-              onClick={() => setEditing(null)}
-              style={{
-                padding: "8px 16px",
-                borderRadius: "8px",
-                border: "1px solid #E2E8F0",
-                background: "#fff",
-                fontSize: "13px",
-                fontWeight: 600,
-                cursor: "pointer",
-                color: "#64748B",
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              style={{
-                padding: "8px 20px",
-                borderRadius: "8px",
-                border: "none",
-                background: saving ? "#94A3B8" : "#2D8C4E",
-                color: "#fff",
-                fontSize: "13px",
-                fontWeight: 700,
-                cursor: saving ? "not-allowed" : "pointer",
-              }}
-            >
-              {saving ? "Saving..." : "Save Template"}
-            </button>
+            SEWER <span style={{ color: "#2D8C4E" }}>LABZ</span>
           </div>
-        </div>
-
-        {/* Template Name */}
-        <div style={card}>
-          <h3
-            style={{
-              fontSize: "14px",
-              fontWeight: 700,
-              color: "#0F2A4A",
-              margin: "0 0 14px",
-            }}
-          >
-            Template Info
-          </h3>
-          <div style={{ marginBottom: "12px" }}>
-            <label style={lbl}>Template Name *</label>
-            <input
-              value={editing.name || ""}
-              onChange={(e) => updateEditing("name", e.target.value)}
-              placeholder="e.g. Standard Residential Inspection"
-              style={inp}
-            />
-          </div>
-        </div>
-
-        {/* Company Branding */}
-        <div style={card}>
-          <h3
-            style={{
-              fontSize: "14px",
-              fontWeight: 700,
-              color: "#0F2A4A",
-              margin: "0 0 14px",
-            }}
-          >
-            Company Branding
-          </h3>
-
-          <div style={{ marginBottom: "14px" }}>
-            <label style={lbl}>Company Logo</label>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleLogoUpload}
-              style={{
-                display: "block",
-                fontSize: "13px",
-                color: "#64748B",
-                marginBottom: "8px",
-              }}
-            />
-            {editing.companyLogo && (
-              <img
-                src={editing.companyLogo}
-                alt="Logo preview"
-                style={{
-                  maxHeight: "60px",
-                  objectFit: "contain",
-                  border: "1px solid #E2E8F0",
-                  borderRadius: "6px",
-                  padding: "4px",
-                }}
-              />
-            )}
-          </div>
-
-          <div style={{ marginBottom: "12px" }}>
-            <label style={lbl}>Company Name</label>
-            <input
-              value={editing.companyName || ""}
-              onChange={(e) => updateEditing("companyName", e.target.value)}
-              placeholder="Sewer Labz"
-              style={inp}
-            />
-          </div>
-
-          <div style={{ marginBottom: "12px" }}>
-            <label style={lbl}>Tagline</label>
-            <input
-              value={editing.companyTagline || ""}
-              onChange={(e) => updateEditing("companyTagline", e.target.value)}
-              placeholder="Don't Let Your Drain Be A Pain!"
-              style={inp}
-            />
-          </div>
-        </div>
-
-        {/* Statement of Service */}
-        <div style={card}>
-          <h3
-            style={{
-              fontSize: "14px",
-              fontWeight: 700,
-              color: "#0F2A4A",
-              margin: "0 0 14px",
-            }}
-          >
-            Statement of Service
-          </h3>
-          <label style={lbl}>Custom Statement (appears in every report)</label>
-          <textarea
-            value={editing.statementOfService || ""}
-            onChange={(e) =>
-              updateEditing("statementOfService", e.target.value)
-            }
-            rows={5}
-            style={{
-              ...inp,
-              height: "auto",
-              padding: "10px 12px",
-              resize: "vertical",
-              lineHeight: "1.6",
-            }}
-          />
-        </div>
-
-        {/* Report Options */}
-        <div style={card}>
-          <h3
-            style={{
-              fontSize: "14px",
-              fontWeight: 700,
-              color: "#0F2A4A",
-              margin: "0 0 14px",
-            }}
-          >
-            Report Options
-          </h3>
-
-          {[
-            {
-              key: "includeDefectGraphic",
-              label: "Include Common Sewer Defect Graphic in reports",
-            },
-            {
-              key: "showSuggestedMaintenance",
-              label: 'Enable "Suggested Maintenance" severity option',
-            },
-          ].map(({ key, label }) => (
-            <label
-              key={key}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "10px",
-                marginBottom: "12px",
-                cursor: "pointer",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={!!(editing as any)[key]}
-                onChange={(e) => updateEditing(key, e.target.checked)}
-                style={{
-                  width: "16px",
-                  height: "16px",
-                  accentColor: "#0F2A4A",
-                }}
-              />
-              <span style={{ fontSize: "13px", color: "#374151" }}>
-                {label}
-              </span>
-            </label>
-          ))}
-        </div>
-
-        {/* Custom Dropdowns for General Notes */}
-        <div style={card}>
-          <h3
-            style={{
-              fontSize: "14px",
-              fontWeight: 700,
-              color: "#0F2A4A",
-              margin: "0 0 4px",
-            }}
-          >
-            Custom Dropdowns
-          </h3>
-          <p
-            style={{ fontSize: "12px", color: "#94A3B8", marginBottom: "14px" }}
-          >
-            These dropdowns appear in the General Notes tab of every report
-            using this template.
-          </p>
-
-          {(editing.customDropdowns || []).map((dd, i) => (
-            <div
-              key={i}
-              style={{
-                border: "1px solid #E2E8F0",
-                borderRadius: "8px",
-                padding: "14px",
-                marginBottom: "12px",
-                background: "#FAFAFA",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: "10px",
-                }}
-              >
-                <input
-                  value={dd.label}
-                  onChange={(e) => updateDropdownLabel(i, e.target.value)}
-                  placeholder="Dropdown label (e.g. Pipe Condition)"
-                  style={{ ...inp, flex: 1, marginRight: "10px" }}
-                />
-                <button
-                  onClick={() => removeDropdown(i)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "#DC2626",
-                    cursor: "pointer",
-                    fontSize: "18px",
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-              {dd.options.map((opt, oi) => (
-                <div
-                  key={oi}
-                  style={{ display: "flex", gap: "6px", marginBottom: "6px" }}
-                >
-                  <input
-                    value={opt}
-                    onChange={(e) =>
-                      updateDropdownOption(i, oi, e.target.value)
-                    }
-                    placeholder={`Option ${oi + 1}`}
-                    style={{ ...inp, flex: 1 }}
-                  />
-                  {dd.options.length > 1 && (
-                    <button
-                      onClick={() => removeDropdownOption(i, oi)}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        color: "#DC2626",
-                        cursor: "pointer",
-                        fontSize: "16px",
-                      }}
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
-              ))}
-              <button
-                onClick={() => addDropdownOption(i)}
-                style={{
-                  fontSize: "12px",
-                  color: "#2563EB",
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  marginTop: "4px",
-                }}
-              >
-                + Add Option
-              </button>
-            </div>
-          ))}
-
-          <button
-            onClick={addDropdown}
-            style={{
-              padding: "8px 16px",
-              borderRadius: "6px",
-              border: "1px solid #E2E8F0",
-              background: "#F8FAFC",
-              fontSize: "13px",
-              fontWeight: 600,
-              cursor: "pointer",
-              color: "#0F2A4A",
-            }}
-          >
-            + Add Dropdown
-          </button>
+          <div style={{ fontSize: "13px", color: "#94A3B8" }}>Loading...</div>
         </div>
       </div>
     );
+  }
 
-  // ── Templates list view ────────────────────────────────────────
+  // Public pages (login/signup) — no nav bar
+  const isPublic = PUBLIC_PATHS.some((p) => pathname?.endsWith(p));
+  if (isPublic) return <>{children}</>;
+
+  // Authenticated pages — show nav bar
   return (
     <div
       style={{
-        padding: "24px",
-        maxWidth: "1000px",
-        margin: "0 auto",
+        minHeight: "100vh",
+        background: "#F8FAFC",
         fontFamily: "Inter, Arial, sans-serif",
       }}
     >
-      <div
+      {/* ── Top Navigation Bar ── */}
+      <nav
         style={{
+          background: "#0F2A4A",
+          color: "#fff",
+          padding: "0 24px",
+          height: "52px",
           display: "flex",
-          justifyContent: "space-between",
           alignItems: "center",
-          marginBottom: "24px",
+          justifyContent: "space-between",
+          position: "sticky",
+          top: 0,
+          zIndex: 100,
+          boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
         }}
       >
-        <div>
-          <h1
+        {/* Logo */}
+        <Link href="/" style={{ textDecoration: "none" }}>
+          <span
             style={{
-              fontSize: "22px",
-              fontWeight: 800,
-              color: "#0F2A4A",
-              margin: 0,
-            }}
-          >
-            Templates
-          </h1>
-          <p style={{ fontSize: "13px", color: "#94A3B8", marginTop: "4px" }}>
-            Create and manage report templates
-          </p>
-        </div>
-        <button
-          onClick={handleNew}
-          style={{
-            background: "#2D8C4E",
-            color: "#fff",
-            border: "none",
-            borderRadius: "8px",
-            padding: "10px 20px",
-            fontSize: "13px",
-            fontWeight: 700,
-            cursor: "pointer",
-          }}
-        >
-          + New Template
-        </button>
-      </div>
-
-      {templates.length === 0 ? (
-        <div
-          style={{
-            background: "#fff",
-            border: "2px dashed #E2E8F0",
-            borderRadius: "12px",
-            padding: "60px 24px",
-            textAlign: "center",
-          }}
-        >
-          <div style={{ fontSize: "32px", marginBottom: "12px" }}>🗂</div>
-          <div
-            style={{
-              fontSize: "15px",
-              fontWeight: 600,
-              color: "#0F2A4A",
-              marginBottom: "6px",
-            }}
-          >
-            No templates yet
-          </div>
-          <div
-            style={{ fontSize: "13px", color: "#94A3B8", marginBottom: "20px" }}
-          >
-            Create a template to customize your reports with your company
-            branding
-          </div>
-          <button
-            onClick={handleNew}
-            style={{
-              background: "#2D8C4E",
+              fontSize: "20px",
+              fontWeight: 900,
               color: "#fff",
-              border: "none",
-              borderRadius: "8px",
-              padding: "10px 20px",
-              fontSize: "13px",
+              letterSpacing: "-0.5px",
+            }}
+          >
+            SEWER <span style={{ color: "#2D8C4E" }}>LABZ</span>
+          </span>
+        </Link>
+
+        {/* Nav links */}
+        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+          {[
+            { href: "/", label: "📋 Dashboard" },
+            { href: "/reports", label: "📄 Reports" },
+            { href: "/reports/new", label: "+ New Report" },
+            { href: "/templates", label: "🗂 Templates" },
+            { href: "/settings", label: "⚙️ Settings" },
+          ].map(({ href, label }) => {
+            const active = pathname === href;
+            return (
+              <Link
+                key={href}
+                href={href}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: "6px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  textDecoration: "none",
+                  background: active ? "#2D8C4E" : "transparent",
+                  color: active ? "#fff" : "#CBD5E1",
+                  transition: "background 0.15s",
+                }}
+              >
+                {label}
+              </Link>
+            );
+          })}
+        </div>
+
+        {/* User + logout */}
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          {user && (
+            <span style={{ fontSize: "12px", color: "#94A3B8" }}>
+              {user.email}
+            </span>
+          )}
+          <button
+            onClick={handleLogout}
+            style={{
+              padding: "6px 14px",
+              borderRadius: "6px",
+              background: "rgba(255,255,255,0.1)",
+              color: "#fff",
+              border: "1px solid rgba(255,255,255,0.2)",
+              fontSize: "12px",
               fontWeight: 600,
               cursor: "pointer",
             }}
           >
-            Create First Template
+            Sign Out
           </button>
         </div>
-      ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(2, 1fr)",
-            gap: "16px",
-          }}
-        >
-          {templates.map((t) => (
-            <div
-              key={t.id}
-              style={{
-                background: "#fff",
-                border: "1px solid #E2E8F0",
-                borderRadius: "12px",
-                padding: "20px",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                  marginBottom: "12px",
-                }}
-              >
-                <div>
-                  {t.companyLogo && (
-                    <img
-                      src={t.companyLogo}
-                      alt="Logo"
-                      style={{
-                        maxHeight: "36px",
-                        objectFit: "contain",
-                        marginBottom: "8px",
-                        display: "block",
-                      }}
-                    />
-                  )}
-                  <div
-                    style={{
-                      fontSize: "15px",
-                      fontWeight: 700,
-                      color: "#0F2A4A",
-                    }}
-                  >
-                    {t.name}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "12px",
-                      color: "#94A3B8",
-                      marginTop: "2px",
-                    }}
-                  >
-                    {t.companyName}
-                  </div>
-                </div>
-              </div>
+      </nav>
 
-              <div
-                style={{
-                  fontSize: "12px",
-                  color: "#64748B",
-                  marginBottom: "14px",
-                  lineHeight: "1.6",
-                }}
-              >
-                {t.includeDefectGraphic && (
-                  <span style={{ marginRight: "8px" }}>✓ Defect Graphic</span>
-                )}
-                {t.showSuggestedMaintenance && (
-                  <span style={{ marginRight: "8px" }}>
-                    ✓ Suggested Maintenance
-                  </span>
-                )}
-                {t.customDropdowns?.length > 0 && (
-                  <span>
-                    {t.customDropdowns.length} custom dropdown
-                    {t.customDropdowns.length > 1 ? "s" : ""}
-                  </span>
-                )}
-              </div>
-
-              <div style={{ display: "flex", gap: "8px" }}>
-                <button
-                  onClick={() => handleEdit(t)}
-                  style={{
-                    flex: 1,
-                    padding: "8px",
-                    borderRadius: "6px",
-                    border: "none",
-                    background: "#EFF6FF",
-                    color: "#2563EB",
-                    fontSize: "12px",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => handleDelete(t.id)}
-                  style={{
-                    padding: "8px 14px",
-                    borderRadius: "6px",
-                    border: "none",
-                    background: "#FEF2F2",
-                    color: "#DC2626",
-                    fontSize: "12px",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* ── Page Content ── */}
+      <main>{children}</main>
     </div>
   );
 }
