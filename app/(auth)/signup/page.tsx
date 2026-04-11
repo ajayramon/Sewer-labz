@@ -7,17 +7,14 @@ import Link from "next/link";
 export default function SignupPage() {
   const router = useRouter();
   const [step, setStep] = useState(1);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [agreed, setAgreed] = useState(false);
 
   const [form, setForm] = useState({
-    // Step 1 — Account
     fullName: "",
     email: "",
     password: "",
     confirm: "",
-    // Step 2 — Company
     companyName: "",
     companyPhone: "",
     companyAddress: "",
@@ -27,7 +24,6 @@ export default function SignupPage() {
     companyWebsite: "",
     licenseNumber: "",
     inspectorTitle: "",
-    // Step 3 — Plan
     plan: "FREE",
   });
 
@@ -72,27 +68,15 @@ export default function SignupPage() {
     setStep((p) => p + 1);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // FIX: Save locally first, redirect immediately, API in background
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
     if (!agreed) {
       setError("YOU MUST AGREE TO THE TERMS AND CONDITIONS");
       return;
     }
-    setLoading(true);
-    try {
-      const res = await fetch("/api/auth/signup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        setError(data.error || "Signup failed");
-        setLoading(false);
-        return;
-      }
-    } catch {}
+
+    // Save locally FIRST — instant
     localStorage.setItem(
       "user",
       JSON.stringify({
@@ -101,8 +85,16 @@ export default function SignupPage() {
         companyName: form.companyName,
       }),
     );
+
+    // Redirect immediately — no waiting
     router.push("/");
-    setLoading(false);
+
+    // API in background — doesn't block UI
+    fetch("/api/auth/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form),
+    }).catch(() => {});
   };
 
   const inp: React.CSSProperties = {
@@ -237,7 +229,6 @@ export default function SignupPage() {
           boxShadow: "0 4px 24px rgba(0,0,0,0.08)",
         }}
       >
-        {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: "6px" }}>
           <span
             style={{
@@ -282,7 +273,7 @@ export default function SignupPage() {
         )}
 
         <form onSubmit={handleSubmit}>
-          {/* STEP 1 — Account */}
+          {/* STEP 1 */}
           {step === 1 && (
             <div>
               <h3
@@ -322,7 +313,7 @@ export default function SignupPage() {
             </div>
           )}
 
-          {/* STEP 2 — Company */}
+          {/* STEP 2 */}
           {step === 2 && (
             <div>
               <h3
@@ -362,7 +353,6 @@ export default function SignupPage() {
                 type="url"
                 placeholder="https://yourdomain.com"
               />
-
               <div style={{ marginBottom: "14px" }}>
                 <label style={lbl}>Street Address *</label>
                 <input
@@ -373,7 +363,6 @@ export default function SignupPage() {
                   style={inp}
                 />
               </div>
-
               <div
                 style={{
                   display: "grid",
@@ -416,7 +405,7 @@ export default function SignupPage() {
             </div>
           )}
 
-          {/* STEP 3 — Plan + Terms */}
+          {/* STEP 3 */}
           {step === 3 && (
             <div>
               <h3
@@ -465,7 +454,6 @@ export default function SignupPage() {
                     marginBottom: "12px",
                     cursor: "pointer",
                     background: form.plan === plan.id ? "#F8FAFC" : "#fff",
-                    transition: "all 0.15s",
                   }}
                 >
                   <div
@@ -554,7 +542,6 @@ export default function SignupPage() {
                 </div>
               ))}
 
-              {/* ALL CAPS Disclaimer */}
               <div
                 style={{
                   background: "#F8FAFC",
@@ -624,25 +611,25 @@ export default function SignupPage() {
 
               <button
                 type="submit"
-                disabled={loading || !agreed}
+                disabled={!agreed}
                 style={{
                   width: "100%",
                   padding: "12px",
                   borderRadius: "8px",
                   border: "none",
-                  background: loading || !agreed ? "#94A3B8" : "#2D8C4E",
+                  background: !agreed ? "#94A3B8" : "#2D8C4E",
                   color: "#fff",
                   fontSize: "14px",
                   fontWeight: 700,
-                  cursor: loading || !agreed ? "not-allowed" : "pointer",
+                  cursor: !agreed ? "not-allowed" : "pointer",
                 }}
               >
-                {loading ? "Creating Account..." : "Create Account"}
+                Create Account
               </button>
             </div>
           )}
 
-          {/* Back / Next buttons */}
+          {/* Back / Next */}
           {step < 3 && (
             <div style={{ display: "flex", gap: "10px", marginTop: "8px" }}>
               {step > 1 && (
