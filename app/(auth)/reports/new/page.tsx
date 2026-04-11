@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef } from "react";
+import { useState, useRef, RefObject } from "react";
 
 type DefectImage = { id: string; url: string; name: string };
 type Defect = {
@@ -200,7 +200,7 @@ export default function ReportBuilder() {
   const [dragOver, setDragOver] = useState<string | null>(null);
 
   // Refs for auto-tab on time inputs
-  const inspMinRef = useRef<HTMLInputElement>(null);
+  const inspMinRef = useRef<HTMLInputElement | null>(null);
 
   const updateDetail = (k: string, v: string) =>
     setDetails((p) => ({ ...p, [k]: v }));
@@ -413,7 +413,7 @@ export default function ReportBuilder() {
     onHChange: (v: string) => void;
     onMChange: (v: string) => void;
     onApChange: (v: string) => void;
-    mRef?: React.RefObject<HTMLInputElement>;
+    mRef?: RefObject<HTMLInputElement | null>;
   }) => (
     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
       <input
@@ -429,7 +429,7 @@ export default function ReportBuilder() {
       />
       <span style={{ fontWeight: 700, color: "#64748B" }}>:</span>
       <input
-        ref={mRef}
+        ref={mRef as RefObject<HTMLInputElement>}
         maxLength={2}
         value={mVal}
         onChange={(e) => onMChange(e.target.value.replace(/\D/g, ""))}
