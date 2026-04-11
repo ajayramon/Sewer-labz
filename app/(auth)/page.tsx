@@ -12,7 +12,6 @@ type Report = {
   inspectedAt: string;
   status: "DRAFT" | "COMPLETE";
   createdAt: string;
-=========
 };
 
 type Template = {
@@ -22,7 +21,7 @@ type Template = {
   companyLogo: string;
   includeDefectGraphic: boolean;
   showSuggestedMaintenance: boolean;
->>>>>>>>> Temporary merge branch 2
+  customDropdowns: { label: string; options: string[] }[];
 };
 
 type Stats = {
@@ -31,8 +30,6 @@ type Stats = {
   drafts: number;
   templatesUsed: number;
 };
-<<<<<<<<< Temporary merge branch 1
-=========
 
 type Settings = {
   fullName: string;
@@ -43,7 +40,6 @@ type Settings = {
   companyWebsite: string;
   licenseNumber: string;
 };
->>>>>>>>> Temporary merge branch 2
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -61,12 +57,15 @@ export default function DashboardPage() {
   });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-<<<<<<<<< Temporary merge branch 1
 
-  useEffect(() => {
-    fetchDashboard();
-=========
-  const [settingsSaved, setSettingsSaved] = useState(false);
+  // Templates state
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [editingTemplate, setEditingTemplate] =
+    useState<Partial<Template> | null>(null);
+  const [isNewTemplate, setIsNewTemplate] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+
+  // Settings state
   const [settings, setSettings] = useState<Settings>({
     fullName: "",
     email: "",
@@ -76,12 +75,16 @@ export default function DashboardPage() {
     companyWebsite: "",
     licenseNumber: "",
   });
+  const [settingsSaved, setSettingsSaved] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<
+    "account" | "company" | "subscription"
+  >("account");
 
   useEffect(() => {
     fetchDashboard();
     loadTemplates();
     loadSettings();
->>>>>>>>> Temporary merge branch 2
   }, []);
 
   const fetchDashboard = async () => {
@@ -95,8 +98,6 @@ export default function DashboardPage() {
       setLoading(false);
     }
   };
-<<<<<<<<< Temporary merge branch 1
-=========
 
   const loadTemplates = () => {
     try {
@@ -109,18 +110,21 @@ export default function DashboardPage() {
     try {
       const user = localStorage.getItem("user");
       const saved = localStorage.getItem("sewer_settings");
+      if (saved) {
+        setSettings(JSON.parse(saved));
+        return;
+      }
       if (user) {
         const u = JSON.parse(user);
         setSettings((p) => ({
           ...p,
           email: u.email || "",
           fullName: u.fullName || "",
+          companyName: u.companyName || "",
         }));
       }
-      if (saved) setSettings(JSON.parse(saved));
     } catch {}
   };
->>>>>>>>> Temporary merge branch 2
 
   // ── Reports ─────────────────────────────────────────────────
   const handlePDF = async (report: Report) => {
@@ -144,26 +148,42 @@ export default function DashboardPage() {
     }
   };
 
-<<<<<<<<< Temporary merge branch 1
-  const handleDelete = async (id: string) => {
+  const handleDeleteReport = async (id: string) => {
     if (!confirm("Delete this report?")) return;
     await fetch(`/api/reports/${id}`, { method: "DELETE" }).catch(() => {});
     setReports((p) => p.filter((r) => r.id !== id));
   };
 
-  const filtered = reports.filter(
-    (r) =>
-      r.title?.toLowerCase().includes(search.toLowerCase()) ||
-      r.clientName?.toLowerCase().includes(search.toLowerCase()) ||
-      r.location?.toLowerCase().includes(search.toLowerCase()),
-  );
+  // ── Templates ────────────────────────────────────────────────
+  const handleNewTemplate = () => {
+    setEditingTemplate({
+      name: "",
+      companyName: "Sewer Labz",
+      companyLogo: "",
+      includeDefectGraphic: true,
+      showSuggestedMaintenance: true,
+      customDropdowns: [],
+    });
+    setIsNewTemplate(true);
+  };
 
-  const tab = (active: boolean): React.CSSProperties => ({
-=========
-  const handleDeleteReport = async (id: string) => {
-    if (!confirm("Delete this report?")) return;
-    await fetch(`/api/reports/${id}`, { method: "DELETE" }).catch(() => {});
-    setReports((p) => p.filter((r) => r.id !== id));
+  const handleSaveTemplate = () => {
+    if (!editingTemplate?.name?.trim()) {
+      alert("Template name is required");
+      return;
+    }
+    setSavingTemplate(true);
+    const saved: Template = {
+      ...(editingTemplate as Template),
+      id: isNewTemplate ? Date.now().toString() : editingTemplate.id!,
+    };
+    const updated = isNewTemplate
+      ? [...templates, saved]
+      : templates.map((t) => (t.id === saved.id ? saved : t));
+    setTemplates(updated);
+    localStorage.setItem("sewer_templates", JSON.stringify(updated));
+    setEditingTemplate(null);
+    setSavingTemplate(false);
   };
 
   const handleDeleteTemplate = (id: string) => {
@@ -173,7 +193,20 @@ export default function DashboardPage() {
     localStorage.setItem("sewer_templates", JSON.stringify(updated));
   };
 
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) =>
+      setEditingTemplate((p) =>
+        p ? { ...p, companyLogo: ev.target?.result as string } : p,
+      );
+    reader.readAsDataURL(file);
+  };
+
+  // ── Settings ─────────────────────────────────────────────────
   const handleSaveSettings = async () => {
+    setSettingsSaving(true);
     try {
       await fetch("/api/settings", {
         method: "PATCH",
@@ -182,6 +215,7 @@ export default function DashboardPage() {
       });
     } catch {}
     localStorage.setItem("sewer_settings", JSON.stringify(settings));
+    setSettingsSaving(false);
     setSettingsSaved(true);
     setTimeout(() => setSettingsSaved(false), 2500);
   };
@@ -191,6 +225,7 @@ export default function DashboardPage() {
     router.replace("/login");
   };
 
+  // ── Filtered reports ─────────────────────────────────────────
   const filtered = reports.filter(
     (r) =>
       r.title?.toLowerCase().includes(search.toLowerCase()) ||
@@ -198,9 +233,8 @@ export default function DashboardPage() {
       r.location?.toLowerCase().includes(search.toLowerCase()),
   );
 
-  // ── Styles ──────────────────────────────────────────────────────
+  // ── Styles ───────────────────────────────────────────────────
   const tabBtn = (active: boolean): React.CSSProperties => ({
->>>>>>>>> Temporary merge branch 2
     padding: "8px 20px",
     borderRadius: "6px",
     fontSize: "13px",
@@ -228,8 +262,6 @@ export default function DashboardPage() {
     borderRadius: "12px",
     padding: "20px",
   };
-<<<<<<<<< Temporary merge branch 1
-=========
 
   const inp: React.CSSProperties = {
     width: "100%",
@@ -241,6 +273,7 @@ export default function DashboardPage() {
     outline: "none",
     boxSizing: "border-box",
     background: "#F8FAFC",
+    color: "#0F172A",
   };
 
   const lbl: React.CSSProperties = {
@@ -263,7 +296,6 @@ export default function DashboardPage() {
     background: bg,
     color,
   });
->>>>>>>>> Temporary merge branch 2
 
   return (
     <div
@@ -274,11 +306,7 @@ export default function DashboardPage() {
         fontFamily: "Inter, Arial, sans-serif",
       }}
     >
-<<<<<<<<< Temporary merge branch 1
-      {/* ── Header ── */}
-=========
       {/* Header */}
->>>>>>>>> Temporary merge branch 2
       <div
         style={{
           display: "flex",
@@ -320,11 +348,7 @@ export default function DashboardPage() {
         </Link>
       </div>
 
-<<<<<<<<< Temporary merge branch 1
-      {/* ── Stats ── */}
-=========
       {/* Stats */}
->>>>>>>>> Temporary merge branch 2
       <div
         style={{
           display: "grid",
@@ -366,11 +390,7 @@ export default function DashboardPage() {
         ))}
       </div>
 
-<<<<<<<<< Temporary merge branch 1
-      {/* ── Tabs ── */}
-=========
       {/* Main Tabs */}
->>>>>>>>> Temporary merge branch 2
       <div
         style={{
           background: "#fff",
@@ -389,44 +409,28 @@ export default function DashboardPage() {
           }}
         >
           <button
-<<<<<<<<< Temporary merge branch 1
-            style={tab(activeTab === "reports")}
-=========
             style={tabBtn(activeTab === "reports")}
->>>>>>>>> Temporary merge branch 2
             onClick={() => setActiveTab("reports")}
           >
             📄 Reports
           </button>
           <button
-<<<<<<<<< Temporary merge branch 1
-            style={tab(activeTab === "templates")}
-=========
             style={tabBtn(activeTab === "templates")}
->>>>>>>>> Temporary merge branch 2
             onClick={() => setActiveTab("templates")}
           >
             🗂 Templates
           </button>
           <button
-<<<<<<<<< Temporary merge branch 1
-            style={tab(activeTab === "settings")}
-=========
             style={tabBtn(activeTab === "settings")}
->>>>>>>>> Temporary merge branch 2
             onClick={() => setActiveTab("settings")}
           >
             ⚙️ Settings
           </button>
         </div>
 
-<<<<<<<<< Temporary merge branch 1
-        {/* ── Reports Tab ── */}
-=========
-        {/* ════════════════════════════════════
+        {/* ══════════════════════════
             REPORTS TAB
-        ════════════════════════════════════ */}
->>>>>>>>> Temporary merge branch 2
+        ══════════════════════════ */}
         {activeTab === "reports" && (
           <div style={{ padding: "16px" }}>
             <div style={{ marginBottom: "14px" }}>
@@ -435,20 +439,7 @@ export default function DashboardPage() {
                 placeholder="Search by client, location, title..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-<<<<<<<<< Temporary merge branch 1
-                style={{
-                  width: "100%",
-                  padding: "8px 12px",
-                  borderRadius: "6px",
-                  border: "1px solid #E2E8F0",
-                  fontSize: "13px",
-                  outline: "none",
-                  boxSizing: "border-box",
-                  background: "#F8FAFC",
-                }}
-=========
                 style={{ ...inp, height: "38px" }}
->>>>>>>>> Temporary merge branch 2
               />
             </div>
             {loading ? (
@@ -457,10 +448,6 @@ export default function DashboardPage() {
                   textAlign: "center",
                   padding: "48px",
                   color: "#94A3B8",
-<<<<<<<<< Temporary merge branch 1
-                  fontSize: "14px",
-=========
->>>>>>>>> Temporary merge branch 2
                 }}
               >
                 Loading...
@@ -616,11 +603,7 @@ export default function DashboardPage() {
                             PDF
                           </button>
                           <button
-<<<<<<<<< Temporary merge branch 1
-                            onClick={() => handleDelete(report.id)}
-=========
                             onClick={() => handleDeleteReport(report.id)}
->>>>>>>>> Temporary merge branch 2
                             style={actionBtn("#FEF2F2", "#DC2626")}
                           >
                             Delete
@@ -635,8 +618,9 @@ export default function DashboardPage() {
           </div>
         )}
 
-<<<<<<<<< Temporary merge branch 1
-        {/* ── Templates Tab ── */}
+        {/* ══════════════════════════
+            TEMPLATES TAB
+        ══════════════════════════ */}
         {activeTab === "templates" && (
           <div style={{ padding: "20px" }}>
             {/* Template editor */}
@@ -826,132 +810,120 @@ export default function DashboardPage() {
                   ))}
                 </div>
               </div>
-=========
-        {/* ════════════════════════════════════
-            TEMPLATES TAB — full content
-        ════════════════════════════════════ */}
-        {activeTab === "templates" && (
-          <div style={{ padding: "20px" }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "16px",
-              }}
-            >
+            ) : (
+              /* Templates List */
               <div>
-                <h3
-                  style={{
-                    fontSize: "15px",
-                    fontWeight: 700,
-                    color: "#0F2A4A",
-                    margin: 0,
-                  }}
-                >
-                  Report Templates
-                </h3>
-                <p
-                  style={{
-                    fontSize: "12px",
-                    color: "#94A3B8",
-                    marginTop: "4px",
-                  }}
-                >
-                  Create and manage your report templates
-                </p>
-              </div>
-              <button
-                onClick={() => router.push("/templates")}
-                style={{
-                  background: "#2D8C4E",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: "8px",
-                  padding: "8px 16px",
-                  fontSize: "13px",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                + New Template
-              </button>
->>>>>>>>> Temporary merge branch 2
-            </div>
-
-            {templates.length === 0 ? (
-              <div
-                style={{
-                  textAlign: "center",
-                  padding: "48px",
-                  border: "2px dashed #E2E8F0",
-                  borderRadius: "10px",
-                }}
-              >
-                <div style={{ fontSize: "32px", marginBottom: "12px" }}>🗂</div>
                 <div
                   style={{
-                    fontSize: "14px",
-                    fontWeight: 600,
-                    color: "#0F2A4A",
-                    marginBottom: "6px",
-                  }}
-                >
-                  No templates yet
-                </div>
-                <div
-                  style={{
-                    fontSize: "13px",
-                    color: "#94A3B8",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
                     marginBottom: "16px",
                   }}
                 >
-                  Create a template to customize your reports with company
-                  branding
-                </div>
-                <button
-                  onClick={() => router.push("/templates")}
-                  style={{
-                    background: "#0F2A4A",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: "8px",
-                    padding: "10px 20px",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  Create Template
-                </button>
-              </div>
-            ) : (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(2, 1fr)",
-                  gap: "14px",
-                }}
-              >
-                {templates.map((t) => (
-                  <div
-                    key={t.id}
-                    style={{
-                      border: "1px solid #E2E8F0",
-                      borderRadius: "10px",
-                      padding: "16px",
-                      background: "#FAFAFA",
-                    }}
-                  >
-                    <div
+                  <div>
+                    <h3
                       style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "flex-start",
-                        marginBottom: "10px",
+                        fontSize: "15px",
+                        fontWeight: 700,
+                        color: "#0F2A4A",
+                        margin: 0,
                       }}
                     >
-                      <div>
+                      Report Templates
+                    </h3>
+                    <p
+                      style={{
+                        fontSize: "12px",
+                        color: "#94A3B8",
+                        marginTop: "4px",
+                      }}
+                    >
+                      Create and manage your report templates
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleNewTemplate}
+                    style={{
+                      background: "#2D8C4E",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: "8px",
+                      padding: "8px 16px",
+                      fontSize: "13px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    + New Template
+                  </button>
+                </div>
+
+                {templates.length === 0 ? (
+                  <div
+                    style={{
+                      textAlign: "center",
+                      padding: "48px",
+                      border: "2px dashed #E2E8F0",
+                      borderRadius: "10px",
+                    }}
+                  >
+                    <div style={{ fontSize: "32px", marginBottom: "12px" }}>
+                      🗂
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "14px",
+                        fontWeight: 600,
+                        color: "#0F2A4A",
+                        marginBottom: "6px",
+                      }}
+                    >
+                      No templates yet
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "13px",
+                        color: "#94A3B8",
+                        marginBottom: "16px",
+                      }}
+                    >
+                      Create a template to customize your reports
+                    </div>
+                    <button
+                      onClick={handleNewTemplate}
+                      style={{
+                        background: "#0F2A4A",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "8px",
+                        padding: "10px 20px",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Create Template
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(2, 1fr)",
+                      gap: "14px",
+                    }}
+                  >
+                    {templates.map((t) => (
+                      <div
+                        key={t.id}
+                        style={{
+                          border: "1px solid #E2E8F0",
+                          borderRadius: "10px",
+                          padding: "16px",
+                          background: "#FAFAFA",
+                        }}
+                      >
                         {t.companyLogo && (
                           <img
                             src={t.companyLogo}
@@ -959,7 +931,7 @@ export default function DashboardPage() {
                             style={{
                               maxHeight: "32px",
                               objectFit: "contain",
-                              marginBottom: "6px",
+                              marginBottom: "8px",
                               display: "block",
                             }}
                           />
@@ -969,121 +941,84 @@ export default function DashboardPage() {
                             fontSize: "14px",
                             fontWeight: 700,
                             color: "#0F2A4A",
+                            marginBottom: "4px",
                           }}
                         >
                           {t.name}
                         </div>
-                        <div style={{ fontSize: "12px", color: "#94A3B8" }}>
+                        <div
+                          style={{
+                            fontSize: "12px",
+                            color: "#94A3B8",
+                            marginBottom: "10px",
+                          }}
+                        >
                           {t.companyName}
                         </div>
+                        <div
+                          style={{
+                            fontSize: "11px",
+                            color: "#64748B",
+                            marginBottom: "12px",
+                          }}
+                        >
+                          {t.includeDefectGraphic && (
+                            <span style={{ marginRight: "8px" }}>
+                              ✓ Defect Graphic
+                            </span>
+                          )}
+                          {t.showSuggestedMaintenance && (
+                            <span>✓ Suggested Maintenance</span>
+                          )}
+                        </div>
+                        <div style={{ display: "flex", gap: "8px" }}>
+                          <button
+                            onClick={() => {
+                              setEditingTemplate(t);
+                              setIsNewTemplate(false);
+                            }}
+                            style={{
+                              flex: 1,
+                              padding: "7px",
+                              borderRadius: "6px",
+                              border: "none",
+                              background: "#EFF6FF",
+                              color: "#2563EB",
+                              fontSize: "12px",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteTemplate(t.id)}
+                            style={{
+                              padding: "7px 12px",
+                              borderRadius: "6px",
+                              border: "none",
+                              background: "#FEF2F2",
+                              color: "#DC2626",
+                              fontSize: "12px",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                    <div
-                      style={{
-                        fontSize: "11px",
-                        color: "#64748B",
-                        marginBottom: "12px",
-                      }}
-                    >
-                      {t.includeDefectGraphic && (
-                        <span style={{ marginRight: "8px" }}>
-                          ✓ Defect Graphic
-                        </span>
-                      )}
-                      {t.showSuggestedMaintenance && (
-                        <span>✓ Suggested Maintenance</span>
-                      )}
-                    </div>
-                    <div style={{ display: "flex", gap: "8px" }}>
-                      <button
-                        onClick={() => router.push("/templates")}
-                        style={{
-                          flex: 1,
-                          padding: "7px",
-                          borderRadius: "6px",
-                          border: "none",
-                          background: "#EFF6FF",
-                          color: "#2563EB",
-                          fontSize: "12px",
-                          fontWeight: 700,
-                          cursor: "pointer",
-                        }}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDeleteTemplate(t.id)}
-                        style={{
-                          padding: "7px 12px",
-                          borderRadius: "6px",
-                          border: "none",
-                          background: "#FEF2F2",
-                          color: "#DC2626",
-                          fontSize: "12px",
-                          fontWeight: 700,
-                          cursor: "pointer",
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </div>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
             )}
           </div>
         )}
 
-<<<<<<<<< Temporary merge branch 1
-        {/* ── Settings Tab ── */}
-        {activeTab === "settings" && (
-          <div style={{ padding: "16px" }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                marginBottom: "14px",
-              }}
-            >
-              <Link href="/settings">
-                <button
-                  style={{
-                    background: "#0F2A4A",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: "8px",
-                    padding: "8px 16px",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  Go to Settings →
-                </button>
-              </Link>
-            </div>
-            <div
-              style={{ textAlign: "center", padding: "48px", color: "#94A3B8" }}
-            >
-              <div style={{ fontSize: "32px", marginBottom: "12px" }}>⚙️</div>
-              <div
-                style={{
-                  fontSize: "14px",
-                  fontWeight: 600,
-                  color: "#0F2A4A",
-                  marginBottom: "6px",
-                }}
-              >
-                Account Settings
-              </div>
-              <div style={{ fontSize: "13px" }}>
-                Go to the Settings page to manage your account, company info and
-                subscription.
-              </div>
-=========
-        {/* ════════════════════════════════════
-            SETTINGS TAB — full content
-        ════════════════════════════════════ */}
+        {/* ══════════════════════════
+            SETTINGS TAB
+        ══════════════════════════ */}
         {activeTab === "settings" && (
           <div style={{ padding: "20px" }}>
             <div
@@ -1094,27 +1029,16 @@ export default function DashboardPage() {
                 marginBottom: "20px",
               }}
             >
-              <div>
-                <h3
-                  style={{
-                    fontSize: "15px",
-                    fontWeight: 700,
-                    color: "#0F2A4A",
-                    margin: 0,
-                  }}
-                >
-                  Account Settings
-                </h3>
-                <p
-                  style={{
-                    fontSize: "12px",
-                    color: "#94A3B8",
-                    marginTop: "4px",
-                  }}
-                >
-                  Manage your account and company information
-                </p>
-              </div>
+              <h3
+                style={{
+                  fontSize: "15px",
+                  fontWeight: 700,
+                  color: "#0F2A4A",
+                  margin: 0,
+                }}
+              >
+                Account Settings
+              </h3>
               <div
                 style={{ display: "flex", gap: "10px", alignItems: "center" }}
               >
@@ -1131,8 +1055,9 @@ export default function DashboardPage() {
                 )}
                 <button
                   onClick={handleSaveSettings}
+                  disabled={settingsSaving}
                   style={{
-                    background: "#2D8C4E",
+                    background: settingsSaving ? "#94A3B8" : "#2D8C4E",
                     color: "#fff",
                     border: "none",
                     borderRadius: "8px",
@@ -1142,292 +1067,320 @@ export default function DashboardPage() {
                     cursor: "pointer",
                   }}
                 >
-                  Save Changes
+                  {settingsSaving ? "Saving..." : "Save Changes"}
                 </button>
               </div>
             </div>
 
-            {/* Account Info */}
-            <div
-              style={{
-                marginBottom: "20px",
-                padding: "16px",
-                border: "1px solid #E2E8F0",
-                borderRadius: "10px",
-              }}
-            >
-              <h4
-                style={{
-                  fontSize: "13px",
-                  fontWeight: 700,
-                  color: "#0F2A4A",
-                  margin: "0 0 14px",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
-                }}
+            {/* Settings sub-tabs */}
+            <div style={{ display: "flex", gap: "6px", marginBottom: "20px" }}>
+              <button
+                style={subTabBtn(settingsTab === "account")}
+                onClick={() => setSettingsTab("account")}
               >
-                Account Information
-              </h4>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "14px",
-                }}
+                👤 Account
+              </button>
+              <button
+                style={subTabBtn(settingsTab === "company")}
+                onClick={() => setSettingsTab("company")}
               >
-                {[
-                  {
-                    label: "Full Name",
-                    key: "fullName",
-                    placeholder: "Your full name",
-                  },
-                  {
-                    label: "Email Address",
-                    key: "email",
-                    placeholder: "you@example.com",
-                    disabled: true,
-                  },
-                  {
-                    label: "License Number",
-                    key: "licenseNumber",
-                    placeholder: "LIC-123456",
-                  },
-                ].map(({ label, key, placeholder, disabled }) => (
-                  <div key={key}>
-                    <label style={lbl}>{label}</label>
-                    <input
-                      value={(settings as any)[key]}
-                      disabled={disabled}
-                      onChange={(e) =>
-                        setSettings((p) => ({ ...p, [key]: e.target.value }))
-                      }
-                      placeholder={placeholder}
-                      style={{
-                        ...inp,
-                        color: disabled ? "#94A3B8" : "#0F172A",
-                      }}
-                    />
-                  </div>
-                ))}
-              </div>
+                🏢 Company
+              </button>
+              <button
+                style={subTabBtn(settingsTab === "subscription")}
+                onClick={() => setSettingsTab("subscription")}
+              >
+                💳 Subscription
+              </button>
             </div>
 
-            {/* Company Info */}
-            <div
-              style={{
-                marginBottom: "20px",
-                padding: "16px",
-                border: "1px solid #E2E8F0",
-                borderRadius: "10px",
-              }}
-            >
-              <h4
-                style={{
-                  fontSize: "13px",
-                  fontWeight: 700,
-                  color: "#0F2A4A",
-                  margin: "0 0 14px",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
-                }}
-              >
-                Company Information
-              </h4>
+            {/* Account */}
+            {settingsTab === "account" && (
               <div
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "14px",
-                }}
-              >
-                {[
-                  {
-                    label: "Company Name",
-                    key: "companyName",
-                    placeholder: "Sewer Labz",
-                  },
-                  {
-                    label: "Phone Number",
-                    key: "companyPhone",
-                    placeholder: "(702) 000-0000",
-                  },
-                  {
-                    label: "Website",
-                    key: "companyWebsite",
-                    placeholder: "https://sewerlabz.com",
-                  },
-                ].map(({ label, key, placeholder }) => (
-                  <div key={key}>
-                    <label style={lbl}>{label}</label>
-                    <input
-                      value={(settings as any)[key]}
-                      onChange={(e) =>
-                        setSettings((p) => ({ ...p, [key]: e.target.value }))
-                      }
-                      placeholder={placeholder}
-                      style={inp}
-                    />
-                  </div>
-                ))}
-                <div style={{ gridColumn: "1 / -1" }}>
-                  <label style={lbl}>Company Address</label>
-                  <input
-                    value={settings.companyAddress}
-                    onChange={(e) =>
-                      setSettings((p) => ({
-                        ...p,
-                        companyAddress: e.target.value,
-                      }))
-                    }
-                    placeholder="123 Main St, Las Vegas NV 89101"
-                    style={inp}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Subscription */}
-            <div
-              style={{
-                padding: "16px",
-                border: "1px solid #E2E8F0",
-                borderRadius: "10px",
-                marginBottom: "20px",
-              }}
-            >
-              <h4
-                style={{
-                  fontSize: "13px",
-                  fontWeight: 700,
-                  color: "#0F2A4A",
-                  margin: "0 0 14px",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
-                }}
-              >
-                Subscription
-              </h4>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "12px",
+                  padding: "16px",
+                  border: "1px solid #E2E8F0",
+                  borderRadius: "10px",
                   marginBottom: "16px",
                 }}
               >
-                <span
+                <h4
                   style={{
-                    padding: "4px 14px",
-                    borderRadius: "20px",
-                    fontSize: "12px",
-                    fontWeight: 700,
-                    background: "#F1F5F9",
-                    color: "#64748B",
-                  }}
-                >
-                  FREE PLAN
-                </span>
-                <span style={{ fontSize: "13px", color: "#64748B" }}>
-                  5 reports/month
-                </span>
-              </div>
-              <div
-                style={{
-                  background: "linear-gradient(135deg, #0F2A4A, #1e4a7a)",
-                  borderRadius: "10px",
-                  padding: "18px",
-                  color: "#fff",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: "15px",
-                    fontWeight: 800,
-                    marginBottom: "6px",
-                  }}
-                >
-                  Upgrade to Pro — $49/mo
-                </div>
-                <div
-                  style={{
-                    fontSize: "12px",
-                    color: "#CBD5E1",
-                    marginBottom: "14px",
-                  }}
-                >
-                  Unlimited reports · Custom templates · No watermark · Priority
-                  support
-                </div>
-                <button
-                  style={{
-                    background: "#2D8C4E",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: "8px",
-                    padding: "8px 20px",
                     fontSize: "13px",
                     fontWeight: 700,
-                    cursor: "pointer",
+                    color: "#0F2A4A",
+                    margin: "0 0 14px",
+                    textTransform: "uppercase",
                   }}
                 >
-                  Subscribe Now
-                </button>
+                  Account Information
+                </h4>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: "14px",
+                  }}
+                >
+                  {[
+                    {
+                      label: "Full Name",
+                      key: "fullName",
+                      placeholder: "Your full name",
+                      disabled: false,
+                    },
+                    {
+                      label: "Email Address",
+                      key: "email",
+                      placeholder: "you@example.com",
+                      disabled: true,
+                    },
+                    {
+                      label: "License Number",
+                      key: "licenseNumber",
+                      placeholder: "LIC-123456",
+                      disabled: false,
+                    },
+                  ].map(({ label, key, placeholder, disabled }) => (
+                    <div key={key}>
+                      <label style={lbl}>{label}</label>
+                      <input
+                        value={(settings as any)[key]}
+                        disabled={disabled}
+                        onChange={(e) =>
+                          setSettings((p) => ({ ...p, [key]: e.target.value }))
+                        }
+                        placeholder={placeholder}
+                        style={{
+                          ...inp,
+                          color: disabled ? "#94A3B8" : "#0F172A",
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div
+                  style={{
+                    marginTop: "16px",
+                    paddingTop: "16px",
+                    borderTop: "1px solid #E2E8F0",
+                  }}
+                >
+                  <button
+                    onClick={handleLogout}
+                    style={{
+                      padding: "8px 18px",
+                      borderRadius: "6px",
+                      border: "none",
+                      background: "#FEF2F2",
+                      color: "#DC2626",
+                      fontSize: "13px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Sign Out
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* Danger Zone */}
-            <div
-              style={{
-                padding: "16px",
-                border: "1px solid #FECACA",
-                borderRadius: "10px",
-                background: "#FFF5F5",
-              }}
-            >
-              <h4
+            {/* Company */}
+            {settingsTab === "company" && (
+              <div
                 style={{
-                  fontSize: "13px",
-                  fontWeight: 700,
-                  color: "#DC2626",
-                  margin: "0 0 10px",
+                  padding: "16px",
+                  border: "1px solid #E2E8F0",
+                  borderRadius: "10px",
+                  marginBottom: "16px",
                 }}
               >
-                Danger Zone
-              </h4>
-              <button
-                onClick={handleLogout}
+                <h4
+                  style={{
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    color: "#0F2A4A",
+                    margin: "0 0 14px",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Company Information
+                </h4>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: "14px",
+                  }}
+                >
+                  {[
+                    {
+                      label: "Company Name",
+                      key: "companyName",
+                      placeholder: "Sewer Labz",
+                    },
+                    {
+                      label: "Phone Number",
+                      key: "companyPhone",
+                      placeholder: "(702) 000-0000",
+                    },
+                    {
+                      label: "Website",
+                      key: "companyWebsite",
+                      placeholder: "https://sewerlabz.com",
+                    },
+                  ].map(({ label, key, placeholder }) => (
+                    <div key={key}>
+                      <label style={lbl}>{label}</label>
+                      <input
+                        value={(settings as any)[key]}
+                        onChange={(e) =>
+                          setSettings((p) => ({ ...p, [key]: e.target.value }))
+                        }
+                        placeholder={placeholder}
+                        style={inp}
+                      />
+                    </div>
+                  ))}
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <label style={lbl}>Company Address</label>
+                    <input
+                      value={settings.companyAddress}
+                      onChange={(e) =>
+                        setSettings((p) => ({
+                          ...p,
+                          companyAddress: e.target.value,
+                        }))
+                      }
+                      placeholder="123 Main St, Las Vegas NV 89101"
+                      style={inp}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Subscription */}
+            {settingsTab === "subscription" && (
+              <div
                 style={{
-                  padding: "8px 18px",
-                  borderRadius: "6px",
-                  border: "none",
-                  background: "#FEF2F2",
-                  color: "#DC2626",
-                  fontSize: "13px",
-                  fontWeight: 700,
-                  cursor: "pointer",
+                  padding: "16px",
+                  border: "1px solid #E2E8F0",
+                  borderRadius: "10px",
                 }}
               >
-                Sign Out
-              </button>
->>>>>>>>> Temporary merge branch 2
-            </div>
+                <h4
+                  style={{
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    color: "#0F2A4A",
+                    margin: "0 0 14px",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Subscription
+                </h4>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "12px",
+                    marginBottom: "16px",
+                  }}
+                >
+                  <span
+                    style={{
+                      padding: "4px 14px",
+                      borderRadius: "20px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      background: "#F1F5F9",
+                      color: "#64748B",
+                    }}
+                  >
+                    FREE PLAN
+                  </span>
+                  <span style={{ fontSize: "13px", color: "#64748B" }}>
+                    5 reports/month
+                  </span>
+                </div>
+                <div
+                  style={{
+                    background: "linear-gradient(135deg, #0F2A4A, #1e4a7a)",
+                    borderRadius: "10px",
+                    padding: "20px",
+                    color: "#fff",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: "16px",
+                      fontWeight: 800,
+                      marginBottom: "6px",
+                    }}
+                  >
+                    Upgrade to Pro — $49/mo
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      color: "#CBD5E1",
+                      marginBottom: "14px",
+                      lineHeight: "1.6",
+                    }}
+                  >
+                    Unlimited reports · Custom templates · No watermark ·
+                    Priority support
+                  </div>
+                  <button
+                    style={{
+                      background: "#2D8C4E",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: "8px",
+                      padding: "8px 20px",
+                      fontSize: "13px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Subscribe Now
+                  </button>
+                </div>
+                <div
+                  style={{
+                    marginTop: "16px",
+                    padding: "16px",
+                    border: "1px solid #E2E8F0",
+                    borderRadius: "8px",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      color: "#0F2A4A",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    Billing History
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "13px",
+                      color: "#94A3B8",
+                      textAlign: "center",
+                      padding: "16px",
+                    }}
+                  >
+                    No billing history on free plan.
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
     </div>
   );
 }
-<<<<<<<<< Temporary merge branch 1
-
-const actionBtn = (bg: string, color: string): React.CSSProperties => ({
-  padding: "5px 10px",
-  borderRadius: "6px",
-  fontSize: "12px",
-  fontWeight: 600,
-  cursor: "pointer",
-  border: "none",
-  background: bg,
-  color,
-});
-=========
->>>>>>>>> Temporary merge branch 2
