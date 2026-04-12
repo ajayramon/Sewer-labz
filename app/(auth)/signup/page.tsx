@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -9,43 +9,46 @@ export default function SignupPage() {
   const [step, setStep] = useState(1);
   const [error, setError] = useState("");
   const [agreed, setAgreed] = useState(false);
+  const [plan, setPlan] = useState("FREE");
 
-  const [form, setForm] = useState({
-    fullName: "",
-    email: "",
-    password: "",
-    confirm: "",
-    companyName: "",
-    companyPhone: "",
-    companyAddress: "",
-    companyCity: "",
-    companyState: "",
-    companyZip: "",
-    companyWebsite: "",
-    licenseNumber: "",
-    inspectorTitle: "",
-    plan: "FREE",
-  });
+  // Step 1 refs — no useState = no re-render on keystroke
+  const fullNameRef = useRef<HTMLInputElement>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+  const confirmRef = useRef<HTMLInputElement>(null);
 
-  const update = (k: string, v: string) => setForm((p) => ({ ...p, [k]: v }));
+  // Step 2 refs
+  const companyNameRef = useRef<HTMLInputElement>(null);
+  const inspectorTitleRef = useRef<HTMLInputElement>(null);
+  const licenseRef = useRef<HTMLInputElement>(null);
+  const phoneRef = useRef<HTMLInputElement>(null);
+  const websiteRef = useRef<HTMLInputElement>(null);
+  const addressRef = useRef<HTMLInputElement>(null);
+  const cityRef = useRef<HTMLInputElement>(null);
+  const stateRef = useRef<HTMLInputElement>(null);
+  const zipRef = useRef<HTMLInputElement>(null);
 
   const validateStep1 = () => {
-    if (!form.fullName.trim()) return "Full name is required";
-    if (!form.email.trim()) return "Email is required";
-    if (!form.email.includes("@")) return "Enter a valid email";
-    if (!form.password) return "Password is required";
-    if (form.password.length < 6)
-      return "Password must be at least 6 characters";
-    if (form.password !== form.confirm) return "Passwords do not match";
+    const fullName = fullNameRef.current?.value || "";
+    const email = emailRef.current?.value || "";
+    const password = passwordRef.current?.value || "";
+    const confirm = confirmRef.current?.value || "";
+    if (!fullName.trim()) return "Full name is required";
+    if (!email.trim()) return "Email is required";
+    if (!email.includes("@")) return "Enter a valid email";
+    if (!password) return "Password is required";
+    if (password.length < 6) return "Password must be at least 6 characters";
+    if (password !== confirm) return "Passwords do not match";
     return "";
   };
 
   const validateStep2 = () => {
-    if (!form.companyName.trim()) return "Company name is required";
-    if (!form.companyPhone.trim()) return "Phone number is required";
-    if (!form.companyAddress.trim()) return "Address is required";
-    if (!form.companyCity.trim()) return "City is required";
-    if (!form.companyState.trim()) return "State is required";
+    if (!companyNameRef.current?.value?.trim())
+      return "Company name is required";
+    if (!phoneRef.current?.value?.trim()) return "Phone number is required";
+    if (!addressRef.current?.value?.trim()) return "Address is required";
+    if (!cityRef.current?.value?.trim()) return "City is required";
+    if (!stateRef.current?.value?.trim()) return "State is required";
     return "";
   };
 
@@ -68,7 +71,6 @@ export default function SignupPage() {
     setStep((p) => p + 1);
   };
 
-  // FIX: Save locally first, redirect immediately, API in background
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!agreed) {
@@ -76,24 +78,36 @@ export default function SignupPage() {
       return;
     }
 
-    // Save locally FIRST — instant
+    const email = emailRef.current?.value || "";
+    const fullName = fullNameRef.current?.value || "";
+    const companyName = companyNameRef.current?.value || "";
+
+    // Save locally FIRST — instant redirect
     localStorage.setItem(
       "user",
-      JSON.stringify({
-        email: form.email,
-        fullName: form.fullName,
-        companyName: form.companyName,
-      }),
+      JSON.stringify({ email, fullName, companyName }),
     );
-
-    // Redirect immediately — no waiting
     router.push("/");
 
-    // API in background — doesn't block UI
+    // API in background
     fetch("/api/auth/signup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+      body: JSON.stringify({
+        fullName,
+        email,
+        password: passwordRef.current?.value,
+        companyName,
+        inspectorTitle: inspectorTitleRef.current?.value,
+        licenseNumber: licenseRef.current?.value,
+        companyPhone: phoneRef.current?.value,
+        companyWebsite: websiteRef.current?.value,
+        companyAddress: addressRef.current?.value,
+        companyCity: cityRef.current?.value,
+        companyState: stateRef.current?.value,
+        companyZip: zipRef.current?.value,
+        plan,
+      }),
     }).catch(() => {});
   };
 
@@ -119,24 +133,28 @@ export default function SignupPage() {
     letterSpacing: "0.05em",
   };
 
+  // Simple field component using ref — no state re-render
   const Field = ({
     label,
-    k,
+    inputRef,
     type = "text",
     placeholder = "",
+    maxLength,
   }: {
     label: string;
-    k: string;
+    inputRef: React.RefObject<HTMLInputElement | null>;
     type?: string;
     placeholder?: string;
+    maxLength?: number;
   }) => (
     <div style={{ marginBottom: "14px" }}>
       <label style={lbl}>{label}</label>
       <input
+        ref={inputRef as React.RefObject<HTMLInputElement>}
         type={type}
         placeholder={placeholder}
-        value={(form as any)[k]}
-        onChange={(e) => update(k, e.target.value)}
+        maxLength={maxLength}
+        defaultValue=""
         style={inp}
       />
     </div>
@@ -273,7 +291,7 @@ export default function SignupPage() {
         )}
 
         <form onSubmit={handleSubmit}>
-          {/* STEP 1 */}
+          {/* STEP 1 — Account */}
           {step === 1 && (
             <div>
               <h3
@@ -288,32 +306,31 @@ export default function SignupPage() {
               </h3>
               <Field
                 label="Full Name *"
-                k="fullName"
-                type="text"
+                inputRef={fullNameRef}
                 placeholder="John Smith"
               />
               <Field
                 label="Email Address *"
-                k="email"
+                inputRef={emailRef}
                 type="email"
                 placeholder="you@example.com"
               />
               <Field
                 label="Password *"
-                k="password"
+                inputRef={passwordRef}
                 type="password"
                 placeholder="Min 6 characters"
               />
               <Field
                 label="Confirm Password *"
-                k="confirm"
+                inputRef={confirmRef}
                 type="password"
                 placeholder="Re-enter password"
               />
             </div>
           )}
 
-          {/* STEP 2 */}
+          {/* STEP 2 — Company */}
           {step === 2 && (
             <div>
               <h3
@@ -328,76 +345,72 @@ export default function SignupPage() {
               </h3>
               <Field
                 label="Company Name *"
-                k="companyName"
+                inputRef={companyNameRef}
                 placeholder="Sewer Labz"
               />
               <Field
                 label="Inspector Title"
-                k="inspectorTitle"
+                inputRef={inspectorTitleRef}
                 placeholder="e.g. Certified Sewer Inspector"
               />
               <Field
                 label="License Number"
-                k="licenseNumber"
+                inputRef={licenseRef}
                 placeholder="e.g. LIC-123456"
               />
               <Field
                 label="Phone Number *"
-                k="companyPhone"
+                inputRef={phoneRef}
                 type="tel"
                 placeholder="(702) 000-0000"
               />
               <Field
                 label="Company Website"
-                k="companyWebsite"
+                inputRef={websiteRef}
                 type="url"
                 placeholder="https://yourdomain.com"
               />
-              <div style={{ marginBottom: "14px" }}>
-                <label style={lbl}>Street Address *</label>
-                <input
-                  type="text"
-                  value={form.companyAddress}
-                  onChange={(e) => update("companyAddress", e.target.value)}
-                  placeholder="123 Main St"
-                  style={inp}
-                />
-              </div>
+              <Field
+                label="Street Address *"
+                inputRef={addressRef}
+                placeholder="123 Main St"
+              />
               <div
                 style={{
                   display: "grid",
                   gridTemplateColumns: "2fr 1fr 1fr",
                   gap: "10px",
+                  marginBottom: "14px",
                 }}
               >
                 <div>
                   <label style={lbl}>City *</label>
                   <input
+                    ref={cityRef as React.RefObject<HTMLInputElement>}
                     type="text"
-                    value={form.companyCity}
-                    onChange={(e) => update("companyCity", e.target.value)}
                     placeholder="Las Vegas"
+                    defaultValue=""
                     style={inp}
                   />
                 </div>
                 <div>
                   <label style={lbl}>State *</label>
                   <input
+                    ref={stateRef as React.RefObject<HTMLInputElement>}
                     type="text"
-                    value={form.companyState}
-                    onChange={(e) => update("companyState", e.target.value)}
                     placeholder="NV"
                     maxLength={2}
+                    defaultValue=""
                     style={inp}
                   />
                 </div>
                 <div>
                   <label style={lbl}>ZIP</label>
                   <input
+                    ref={zipRef as React.RefObject<HTMLInputElement>}
                     type="text"
-                    value={form.companyZip}
-                    onChange={(e) => update("companyZip", e.target.value)}
                     placeholder="89101"
+                    defaultValue=""
                     style={inp}
                   />
                 </div>
@@ -405,7 +418,7 @@ export default function SignupPage() {
             </div>
           )}
 
-          {/* STEP 3 */}
+          {/* STEP 3 — Plan + Terms */}
           {step === 3 && (
             <div>
               <h3
@@ -443,17 +456,17 @@ export default function SignupPage() {
                     "No watermark",
                   ],
                 },
-              ].map((plan) => (
+              ].map((p) => (
                 <div
-                  key={plan.id}
-                  onClick={() => update("plan", plan.id)}
+                  key={p.id}
+                  onClick={() => setPlan(p.id)}
                   style={{
-                    border: `2px solid ${form.plan === plan.id ? plan.color : "#E2E8F0"}`,
+                    border: `2px solid ${plan === p.id ? p.color : "#E2E8F0"}`,
                     borderRadius: "10px",
                     padding: "16px",
                     marginBottom: "12px",
                     cursor: "pointer",
-                    background: form.plan === plan.id ? "#F8FAFC" : "#fff",
+                    background: plan === p.id ? "#F8FAFC" : "#fff",
                   }}
                 >
                   <div
@@ -476,15 +489,14 @@ export default function SignupPage() {
                           width: "18px",
                           height: "18px",
                           borderRadius: "50%",
-                          border: `2px solid ${plan.color}`,
-                          background:
-                            form.plan === plan.id ? plan.color : "#fff",
+                          border: `2px solid ${p.color}`,
+                          background: plan === p.id ? p.color : "#fff",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
                         }}
                       >
-                        {form.plan === plan.id && (
+                        {plan === p.id && (
                           <div
                             style={{
                               width: "8px",
@@ -502,17 +514,17 @@ export default function SignupPage() {
                           color: "#0F2A4A",
                         }}
                       >
-                        {plan.name}
+                        {p.name}
                       </span>
                     </div>
                     <span
                       style={{
                         fontWeight: 800,
                         fontSize: "15px",
-                        color: plan.color,
+                        color: p.color,
                       }}
                     >
-                      {plan.price}
+                      {p.price}
                     </span>
                   </div>
                   <div
@@ -523,7 +535,7 @@ export default function SignupPage() {
                       paddingLeft: "28px",
                     }}
                   >
-                    {plan.features.map((f) => (
+                    {p.features.map((f) => (
                       <span
                         key={f}
                         style={{
@@ -542,6 +554,7 @@ export default function SignupPage() {
                 </div>
               ))}
 
+              {/* ALL CAPS Disclaimer */}
               <div
                 style={{
                   background: "#F8FAFC",
