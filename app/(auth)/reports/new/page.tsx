@@ -312,46 +312,37 @@ export default function ReportBuilder() {
         reader.readAsDataURL(f);
       });
   };
-
-  const handleGeneratePDF = async () => {
-    setGenerating(true);
+  const handlePDF = async (report: Report) => {
     try {
-      const res = await fetch("/api/reports/pdf", {
+      const res = await fetch(`/api/reports/${report.id}`);
+      const data = await res.json();
+      const pdfRes = await fetch("/api/reports/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          report: {
-            ...details,
-            title,
-            propertyPhotos,
-            corrections,
-            correctionNotes,
-            generalNotes,
-            inspectionTime: `${details.inspectionTimeH || "--"}:${details.inspectionTimeM || "--"} ${details.inspectionTimeAmPm}`,
-            weather: [
-              details.weatherCondition,
-              details.weatherTemp,
-              details.weatherSoil,
-            ]
-              .filter(Boolean)
-              .join(", "),
-            peoplePresent: details.peoplePresent.join(", "),
-            videoLinks: details.videoLinks.filter((l) => l.trim() !== ""),
-          },
-          defects,
-        }),
+        body: JSON.stringify(data),
       });
-      const html = await res.text();
-      const win = window.open("", "_blank");
+      const html = await pdfRes.text();
+
+      // FIX: blob URL
+      const blob = new Blob([html], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+      const win = window.open(url, "_blank");
       if (win) {
-        win.document.write(html);
-        win.document.close();
-        setTimeout(() => win.print(), 800);
+        win.addEventListener("load", () => {
+          setTimeout(() => {
+            win.print();
+            URL.revokeObjectURL(url);
+          }, 800);
+        });
+      } else {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "inspection-report.html";
+        a.click();
+        URL.revokeObjectURL(url);
       }
     } catch {
       alert("Failed to generate PDF.");
-    } finally {
-      setGenerating(false);
     }
   };
 
