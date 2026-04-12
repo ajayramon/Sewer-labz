@@ -325,11 +325,25 @@ export default function ReportBuilder() {
         body: JSON.stringify({ report, defects }),
       });
       const html = await res.text();
-      const win = window.open("", "_blank");
-      if (win) {
-        win.document.write(html);
-        win.document.close();
-        setTimeout(() => win.print(), 800);
+
+      // iframe approach — no popup blocker issues
+      const printFrame = document.createElement("iframe");
+      printFrame.style.cssText =
+        "position:fixed;right:0;bottom:0;width:0;height:0;border:none;";
+      document.body.appendChild(printFrame);
+
+      const frameDoc =
+        printFrame.contentDocument || printFrame.contentWindow?.document;
+      if (frameDoc) {
+        frameDoc.open();
+        frameDoc.write(html);
+        frameDoc.close();
+        printFrame.onload = () => {
+          setTimeout(() => {
+            printFrame.contentWindow?.print();
+            setTimeout(() => document.body.removeChild(printFrame), 1000);
+          }, 500);
+        };
       }
     } catch {
       alert("Failed to generate PDF.");
