@@ -326,24 +326,15 @@ export default function ReportBuilder() {
       });
       const html = await res.text();
 
-      // iframe approach — no popup blocker issues
-      const printFrame = document.createElement("iframe");
-      printFrame.style.cssText =
-        "position:fixed;right:0;bottom:0;width:0;height:0;border:none;";
-      document.body.appendChild(printFrame);
-
-      const frameDoc =
-        printFrame.contentDocument || printFrame.contentWindow?.document;
-      if (frameDoc) {
-        frameDoc.open();
-        frameDoc.write(html);
-        frameDoc.close();
-        printFrame.onload = () => {
-          setTimeout(() => {
-            printFrame.contentWindow?.print();
-            setTimeout(() => document.body.removeChild(printFrame), 1000);
-          }, 500);
-        };
+      const win = window.open("", "_blank");
+      if (win) {
+        win.document.open();
+        win.document.write(html);
+        win.document.close();
+        win.onload = () => setTimeout(() => win.print(), 1000);
+        setTimeout(() => {
+          if (win && !win.closed) win.print();
+        }, 2500);
       }
     } catch {
       alert("Failed to generate PDF.");
