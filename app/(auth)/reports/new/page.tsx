@@ -1,5 +1,6 @@
 "use client";
-import { useState, useRef, RefObject } from "react";
+import { useState, useRef, useEffect, RefObject } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 type DefectImage = { id: string; url: string; name: string };
 type Defect = {
@@ -75,7 +76,6 @@ const weatherOptions = [
   "Mild",
   "Cold",
 ];
-
 const tempOptions = [
   "60-70°F",
   "70-80°F",
@@ -85,7 +85,6 @@ const tempOptions = [
   "Below 60°F",
   "Above 110°F",
 ];
-
 const soilOptions = [
   "Dry at the surface",
   "Moist at the surface",
@@ -157,9 +156,16 @@ const severityConfig: Record<
 };
 
 export default function ReportBuilder() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const editId = searchParams?.get("edit");
+
   const [title, setTitle] = useState("New Inspection Report");
+  const [reportId, setReportId] = useState<string | null>(editId);
   const [editingTitle, setEditingTitle] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [savedMsg, setSavedMsg] = useState("");
   const [activeTab, setActiveTab] = useState<
     "details" | "system" | "conditions" | "notes" | "recommendations"
   >("details");
@@ -187,20 +193,150 @@ export default function ReportBuilder() {
     pipingNotes: "",
   });
 
-  // General Notes is now its own state (separate from details)
   const [generalNotes, setGeneralNotes] = useState("");
-
   const [corrections, setCorrections] = useState<Record<string, string>>(
     Object.fromEntries(correctiveActions.map((a) => [a.label, "N/A"])),
   );
   const [correctionNotes, setCorrectionNotes] = useState("");
-
   const [propertyPhotos, setPropertyPhotos] = useState<string[]>([]);
   const [defects, setDefects] = useState<Defect[]>([]);
   const [dragOver, setDragOver] = useState<string | null>(null);
 
-  // Refs for auto-tab on time inputs
   const inspMinRef = useRef<HTMLInputElement | null>(null);
+
+  // ── Load existing report if editing ─────────────────────────
+  useEffect(() => {
+    if (editId) {
+      const stored = localStorage.getItem(`report_edit_${editId}`);
+      if (stored) {
+        try {
+          const data = JSON.parse(stored);
+          const r = data.report || data;
+          setTitle(r.title || "Inspection Report");
+          setReportId(editId);
+          setDetails({
+            fileNumber: r.fileNumber || "",
+            clientName: r.clientName || "",
+            location: r.location || "",
+            inspectedAt:
+              r.inspectedAt || new Date().toISOString().split("T")[0],
+            inspectionTimeH: r.inspectionTimeH || "",
+            inspectionTimeM: r.inspectionTimeM || "",
+            inspectionTimeAmPm: r.inspectionTimeAmPm || "AM",
+            inspector: r.inspector || "",
+            peoplePresent: r.peoplePresent
+              ? typeof r.peoplePresent === "string"
+                ? r.peoplePresent.split(", ").filter(Boolean)
+                : r.peoplePresent
+              : [],
+            buyersAgent: r.buyersAgent || "",
+            buildingOccupied: r.buildingOccupied || "Yes",
+            weatherCondition: r.weatherCondition || "",
+            weatherTemp: r.weatherTemp || "",
+            weatherSoil: r.weatherSoil || "",
+            cleanoutLocation: r.cleanoutLocation || "",
+            pipeMaterials: r.pipeMaterials || [],
+            videoLinks: r.videoLinks?.length
+              ? [...r.videoLinks, "", "", "", ""].slice(0, 4)
+              : ["", "", "", ""],
+            cameraDirection1: r.cameraDirection1 || "",
+            cameraDirection2: r.cameraDirection2 || "",
+            pipingNotes: r.pipingNotes || "",
+          });
+          setGeneralNotes(r.generalNotes || "");
+          setCorrections(
+            r.corrections ||
+              Object.fromEntries(
+                correctiveActions.map((a) => [a.label, "N/A"]),
+              ),
+          );
+          setCorrectionNotes(r.correctionNotes || "");
+          setPropertyPhotos(r.propertyPhotos || []);
+          setDefects(data.defects || []);
+          localStorage.removeItem(`report_edit_${editId}`);
+        } catch {}
+      }
+    }
+  }, [editId]);
+
+  // ── Build report object ──────────────────────────────────────
+  const buildReport = () => ({
+    id: reportId || Date.now().toString(),
+    title,
+    ...details,
+    generalNotes,
+    corrections,
+    correctionNotes,
+    propertyPhotos,
+    status: "DRAFT" as const,
+    inspectionTime: `${details.inspectionTimeH || "--"}:${details.inspectionTimeM || "--"} ${details.inspectionTimeAmPm}`,
+    weather: [
+      details.weatherCondition,
+      details.weatherTemp,
+      details.weatherSoil,
+    ]
+      .filter(Boolean)
+      .join(", "),
+    videoLinks: details.videoLinks.filter((l) => l.trim() !== ""),
+    updatedAt: new Date().toISOString(),
+  });
+
+  // ── Save Draft ───────────────────────────────────────────────
+  const handleSaveDraft = async () => {
+    setSaving(true);
+    const report = buildReport();
+    const id = report.id;
+
+    // Always save to localStorage first
+    localStorage.setItem(`report_${id}`, JSON.stringify({ report, defects }));
+
+    // Save to reports list in localStorage
+    const list = JSON.parse(localStorage.getItem("sewer_reports") || "[]");
+    const existing = list.findIndex((r: any) => r.id === id);
+    if (existing >= 0) list[existing] = report;
+    else list.unshift(report);
+    localStorage.setItem("sewer_reports", JSON.stringify(list));
+
+    // Try API
+    try {
+      const method = reportId ? "PATCH" : "POST";
+      const url = reportId ? `/api/reports/${reportId}` : "/api/reports";
+      await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ report, defects }),
+      });
+    } catch {}
+
+    setReportId(id);
+    setSaving(false);
+    setSavedMsg("✓ Draft saved");
+    setTimeout(() => setSavedMsg(""), 2500);
+  };
+
+  // ── Generate PDF ─────────────────────────────────────────────
+  const handleGeneratePDF = async () => {
+    setGenerating(true);
+    try {
+      const report = buildReport();
+      const res = await fetch("/api/reports/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ report, defects }),
+      });
+      const html = await res.text();
+      const win = window.open("", "_blank");
+      if (win) {
+        win.document.write(html);
+        win.document.close();
+        setTimeout(() => win.print(), 800);
+      }
+    } catch {
+      alert("Failed to generate PDF.");
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const updateDetail = (k: string, v: string) =>
     setDetails((p) => ({ ...p, [k]: v }));
@@ -312,41 +448,8 @@ export default function ReportBuilder() {
         reader.readAsDataURL(f);
       });
   };
-  const handlePDF = async (report: Report) => {
-    try {
-      const res = await fetch(`/api/reports/${report.id}`);
-      const data = await res.json();
-      const pdfRes = await fetch("/api/reports/pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      const html = await pdfRes.text();
 
-      // FIX: blob URL
-      const blob = new Blob([html], { type: "text/html" });
-      const url = URL.createObjectURL(blob);
-      const win = window.open(url, "_blank");
-      if (win) {
-        win.addEventListener("load", () => {
-          setTimeout(() => {
-            win.print();
-            URL.revokeObjectURL(url);
-          }, 800);
-        });
-      } else {
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "inspection-report.html";
-        a.click();
-        URL.revokeObjectURL(url);
-      }
-    } catch {
-      alert("Failed to generate PDF.");
-    }
-  };
-
-  // ── Shared styles ──────────────────────────────────────────────
+  // ── Styles ───────────────────────────────────────────────────
   const inp: React.CSSProperties = {
     height: "36px",
     borderRadius: "6px",
@@ -388,7 +491,7 @@ export default function ReportBuilder() {
     marginBottom: "16px",
   };
 
-  // ── Reusable HH:MM + AM/PM component ──────────────────────────
+  // ── Time components ──────────────────────────────────────────
   const TimeBox = ({
     hVal,
     mVal,
@@ -413,7 +516,7 @@ export default function ReportBuilder() {
         onChange={(e) => {
           const v = e.target.value.replace(/\D/g, "");
           onHChange(v);
-          if (v.length === 2) mRef?.current?.focus(); // auto-tab to minutes
+          if (v.length === 2) mRef?.current?.focus();
         }}
         placeholder="HH"
         style={{ ...inp, width: "48px", textAlign: "center" }}
@@ -449,7 +552,6 @@ export default function ReportBuilder() {
     </div>
   );
 
-  // ── Defect time box (MM:SS, no AM/PM) ─────────────────────────
   const DefectTimeBox = ({ defect }: { defect: Defect }) => {
     const ssRef = useRef<HTMLInputElement>(null);
     return (
@@ -497,7 +599,6 @@ export default function ReportBuilder() {
     );
   };
 
-  // ── Severity pill buttons ──────────────────────────────────────
   const SeverityPicker = ({ defect }: { defect: Defect }) => (
     <div
       style={{
@@ -530,7 +631,6 @@ export default function ReportBuilder() {
     </div>
   );
 
-  // ──────────────────────────────────────────────────────────────
   return (
     <div
       style={{
@@ -604,22 +704,49 @@ export default function ReportBuilder() {
             DRAFT
           </span>
         </div>
-        <button
-          onClick={handleGeneratePDF}
-          disabled={generating}
-          style={{
-            background: generating ? "#94A3B8" : "#2D8C4E",
-            color: "#fff",
-            border: "none",
-            borderRadius: "8px",
-            padding: "8px 18px",
-            fontSize: "13px",
-            fontWeight: 600,
-            cursor: generating ? "not-allowed" : "pointer",
-          }}
-        >
-          {generating ? "Generating..." : "Generate PDF"}
-        </button>
+
+        {/* ── Action buttons ── */}
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          {savedMsg && (
+            <span
+              style={{ fontSize: "13px", color: "#16A34A", fontWeight: 600 }}
+            >
+              {savedMsg}
+            </span>
+          )}
+          <button
+            onClick={handleSaveDraft}
+            disabled={saving}
+            style={{
+              background: saving ? "#94A3B8" : "#0F2A4A",
+              color: "#fff",
+              border: "none",
+              borderRadius: "8px",
+              padding: "8px 18px",
+              fontSize: "13px",
+              fontWeight: 600,
+              cursor: saving ? "not-allowed" : "pointer",
+            }}
+          >
+            {saving ? "Saving..." : "💾 Save Draft"}
+          </button>
+          <button
+            onClick={handleGeneratePDF}
+            disabled={generating}
+            style={{
+              background: generating ? "#94A3B8" : "#2D8C4E",
+              color: "#fff",
+              border: "none",
+              borderRadius: "8px",
+              padding: "8px 18px",
+              fontSize: "13px",
+              fontWeight: 600,
+              cursor: generating ? "not-allowed" : "pointer",
+            }}
+          >
+            {generating ? "Generating..." : "📄 Generate PDF"}
+          </button>
+        </div>
       </div>
 
       {/* ── Tabs ── */}
@@ -651,7 +778,6 @@ export default function ReportBuilder() {
         >
           🔍 Pipe Conditions {defects.length > 0 && `(${defects.length})`}
         </button>
-        {/* FIX: General Notes is now its own tab */}
         <button
           style={tab(activeTab === "notes")}
           onClick={() => setActiveTab("notes")}
@@ -667,9 +793,7 @@ export default function ReportBuilder() {
       </div>
 
       <div style={{ padding: "24px", maxWidth: "1000px", margin: "0 auto" }}>
-        {/* ══════════════════════════════════════════════════════════
-            TAB 1 — Client & Site Info
-        ══════════════════════════════════════════════════════════ */}
+        {/* TAB 1 — Client & Site Info */}
         {activeTab === "details" && (
           <div
             style={{
@@ -690,7 +814,6 @@ export default function ReportBuilder() {
                 >
                   File & Client Information
                 </h3>
-
                 {[
                   {
                     label: "File Number",
@@ -730,7 +853,6 @@ export default function ReportBuilder() {
                   </div>
                 ))}
 
-                {/* FIX: Inspection date + HH:MM AM/PM time box with auto-tab */}
                 <div
                   style={{
                     display: "grid",
@@ -779,7 +901,6 @@ export default function ReportBuilder() {
                   </select>
                 </div>
 
-                {/* FIX: People Present — pill/bubble selection */}
                 <div style={{ marginBottom: "12px" }}>
                   <label style={lbl}>People Present</label>
                   <div
@@ -823,7 +944,6 @@ export default function ReportBuilder() {
                   )}
                 </div>
 
-                {/* FIX: Weather/Soil — proper dropdowns */}
                 <div>
                   <label style={lbl}>Weather / Soil Conditions</label>
                   <div
@@ -897,7 +1017,6 @@ export default function ReportBuilder() {
             </div>
 
             <div>
-              {/* Property Photos */}
               <div style={card}>
                 <h3
                   style={{
@@ -983,7 +1102,6 @@ export default function ReportBuilder() {
                           aspectRatio: "4/3",
                         }}
                       >
-                        {/* FIX: objectFit cover + objectPosition center for proper alignment */}
                         <img
                           src={photo}
                           alt={`Property ${index + 1}`}
@@ -1026,9 +1144,7 @@ export default function ReportBuilder() {
           </div>
         )}
 
-        {/* ══════════════════════════════════════════════════════════
-            TAB 2 — Sewer System Info
-        ══════════════════════════════════════════════════════════ */}
+        {/* TAB 2 — Sewer System Info */}
         {activeTab === "system" && (
           <div
             style={{
@@ -1049,7 +1165,6 @@ export default function ReportBuilder() {
                 >
                   Sewer System Details
                 </h3>
-
                 <div style={{ marginBottom: "14px" }}>
                   <label style={lbl}>Cleanout Location</label>
                   <textarea
@@ -1069,8 +1184,6 @@ export default function ReportBuilder() {
                     }}
                   />
                 </div>
-
-                {/* FIX: Video links — 4 clearly separated labeled rows */}
                 <div style={{ marginBottom: "14px" }}>
                   <label style={lbl}>Sewer Video Links (up to 4)</label>
                   {[0, 1, 2, 3].map((i) => (
@@ -1124,20 +1237,8 @@ export default function ReportBuilder() {
                     </div>
                   ))}
                 </div>
-
-                <div style={{ marginBottom: "14px" }}>
-                  <label style={lbl}>Camera Entry / Cleanout Type</label>
-                  <input
-                    type="text"
-                    value={details.fileNumber}
-                    onChange={(e) => updateDetail("fileNumber", e.target.value)}
-                    placeholder='e.g. 4" Cast Iron'
-                    style={{ ...inp, width: "100%" }}
-                  />
-                </div>
               </div>
 
-              {/* FIX: Piping Section — camera directions */}
               <div style={card}>
                 <h3
                   style={{
@@ -1149,16 +1250,6 @@ export default function ReportBuilder() {
                 >
                   Piping Section
                 </h3>
-                <p
-                  style={{
-                    fontSize: "12px",
-                    color: "#64748B",
-                    marginBottom: "12px",
-                  }}
-                >
-                  Describe the camera direction(s) during inspection
-                </p>
-
                 {[
                   {
                     label: "1st Direction",
@@ -1184,7 +1275,6 @@ export default function ReportBuilder() {
                     />
                   </div>
                 ))}
-
                 <div>
                   <label style={lbl}>Additional Piping Notes</label>
                   <textarea
@@ -1207,7 +1297,6 @@ export default function ReportBuilder() {
               </div>
             </div>
 
-            {/* Pipe Materials — bubble selection */}
             <div style={card}>
               <h3
                 style={{
@@ -1263,9 +1352,7 @@ export default function ReportBuilder() {
           </div>
         )}
 
-        {/* ══════════════════════════════════════════════════════════
-            TAB 3 — Pipe Conditions / Defects
-        ══════════════════════════════════════════════════════════ */}
+        {/* TAB 3 — Pipe Conditions */}
         {activeTab === "conditions" && (
           <div>
             <div
@@ -1362,7 +1449,6 @@ export default function ReportBuilder() {
                   overflow: "hidden",
                 }}
               >
-                {/* Defect header row */}
                 <div
                   style={{
                     display: "flex",
@@ -1386,11 +1472,7 @@ export default function ReportBuilder() {
                   >
                     #{index + 1}
                   </span>
-
-                  {/* FIX: MM:SS time box with auto-tab */}
                   <DefectTimeBox defect={defect} />
-
-                  {/* Footage */}
                   <div
                     style={{
                       display: "flex",
@@ -1410,7 +1492,6 @@ export default function ReportBuilder() {
                       ft
                     </span>
                   </div>
-
                   <select
                     value={defect.conditionType}
                     onChange={(e) =>
@@ -1424,7 +1505,6 @@ export default function ReportBuilder() {
                       </option>
                     ))}
                   </select>
-
                   <button
                     onClick={() => toggleExpand(defect.id)}
                     style={{
@@ -1453,12 +1533,10 @@ export default function ReportBuilder() {
 
                 {defect.expanded && (
                   <div style={{ padding: "16px" }}>
-                    {/* FIX: Severity — color-coded pill buttons (not a dropdown) */}
                     <div style={{ marginBottom: "14px" }}>
                       <label style={lbl}>Condition Severity</label>
                       <SeverityPicker defect={defect} />
                     </div>
-
                     <div style={{ marginBottom: "14px" }}>
                       <label style={lbl}>Detailed Narrative</label>
                       <textarea
@@ -1466,7 +1544,7 @@ export default function ReportBuilder() {
                         onChange={(e) =>
                           updateDefect(defect.id, "narrative", e.target.value)
                         }
-                        placeholder="e.g. Root intrusion; unable to determine where roots are originating. Cable or hydro jet to cut."
+                        placeholder="e.g. Root intrusion; unable to determine where roots are originating."
                         rows={3}
                         style={{
                           ...inp,
@@ -1478,8 +1556,6 @@ export default function ReportBuilder() {
                         }}
                       />
                     </div>
-
-                    {/* FIX: Photos — centered, no time/ft labels under images */}
                     <label style={lbl}>Photos ({defect.images.length}/6)</label>
                     <div
                       onDragOver={(e) => {
@@ -1526,7 +1602,6 @@ export default function ReportBuilder() {
                           : "Drag & drop or click to upload"}
                       </div>
                     </div>
-
                     {defect.images.length > 0 && (
                       <div
                         style={{
@@ -1545,7 +1620,6 @@ export default function ReportBuilder() {
                               aspectRatio: "4/3",
                             }}
                           >
-                            {/* FIX: centered, no time/ft text below */}
                             <img
                               src={img.url}
                               alt={img.name}
@@ -1591,7 +1665,6 @@ export default function ReportBuilder() {
                             >
                               ×
                             </button>
-                            {/* NO time/ft labels here — removed per spec */}
                           </div>
                         ))}
                       </div>
@@ -1622,9 +1695,7 @@ export default function ReportBuilder() {
           </div>
         )}
 
-        {/* ══════════════════════════════════════════════════════════
-            TAB 4 — General Notes (OWN TAB — not End of Report)
-        ══════════════════════════════════════════════════════════ */}
+        {/* TAB 4 — General Notes */}
         {activeTab === "notes" && (
           <div style={card}>
             <h3
@@ -1665,12 +1736,9 @@ export default function ReportBuilder() {
           </div>
         )}
 
-        {/* ══════════════════════════════════════════════════════════
-            TAB 5 — End of Report / Recommendations
-        ══════════════════════════════════════════════════════════ */}
+        {/* TAB 5 — End of Report */}
         {activeTab === "recommendations" && (
           <div>
-            {/* FIX: Corrective Action Recommendations — pill selection per category */}
             <div style={card}>
               <h3
                 style={{
@@ -1691,7 +1759,6 @@ export default function ReportBuilder() {
               >
                 Select recommended corrective actions for each category
               </p>
-
               {correctiveActions.map((action) => (
                 <div key={action.label} style={{ marginBottom: "18px" }}>
                   <label style={lbl}>{action.label}</label>
@@ -1729,13 +1796,12 @@ export default function ReportBuilder() {
                   </div>
                 </div>
               ))}
-
               <div style={{ marginTop: "16px" }}>
                 <label style={lbl}>Additional Recommendations / Notes</label>
                 <textarea
                   value={correctionNotes}
                   onChange={(e) => setCorrectionNotes(e.target.value)}
-                  placeholder="e.g. Hydro jet/blade cutting recommended to remove roots. Cast iron line needs to be replaced or lined..."
+                  placeholder="e.g. Hydro jet/blade cutting recommended to remove roots..."
                   rows={6}
                   style={{
                     ...inp,
@@ -1749,7 +1815,6 @@ export default function ReportBuilder() {
               </div>
             </div>
 
-            {/* End of Report Summary block */}
             <div style={card}>
               <h3
                 style={{

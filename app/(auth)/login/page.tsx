@@ -1,26 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
+  const emailRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  // Use refs instead of useState — no re-render on every keystroke
+  const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
+    const email = emailRef.current?.value || "";
+    const password = passwordRef.current?.value || "";
+
     if (!email || !password) {
       alert("Enter email and password");
       return;
     }
-    setLoading(true);
-    // Fake login — frontend only
+
     localStorage.setItem("user", JSON.stringify({ email }));
     router.push("/");
-    setLoading(false);
   };
 
   return (
@@ -47,7 +48,12 @@ export default function LoginPage() {
         {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: "8px" }}>
           <span
-            style={{ fontSize: "28px", fontWeight: 900, letterSpacing: "-1px" }}
+            style={{
+              fontSize: "28px",
+              fontWeight: 900,
+              letterSpacing: "-1px",
+              color: "#0F2A4A",
+            }}
           >
             SEWER <span style={{ color: "#2D8C4E" }}>LABZ</span>
           </span>
@@ -63,124 +69,78 @@ export default function LoginPage() {
           Professional Sewer Inspection Reports
         </p>
 
-        <h2
-          style={{
-            fontSize: "18px",
-            fontWeight: 700,
-            color: "#0F2A4A",
-            marginBottom: "20px",
-            textAlign: "center",
-          }}
-        >
-          Sign In
-        </h2>
-
         <form onSubmit={handleLogin}>
           <div style={{ marginBottom: "14px" }}>
-            <label
-              style={{
-                display: "block",
-                fontSize: "11px",
-                fontWeight: 600,
-                color: "#64748B",
-                marginBottom: "4px",
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-              }}
-            >
-              Email
-            </label>
+            <label style={lbl}>Email</label>
             <input
+              ref={emailRef}
               type="email"
               placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                borderRadius: "6px",
-                border: "1px solid #E2E8F0",
-                fontSize: "14px",
-                outline: "none",
-                boxSizing: "border-box",
-                background: "#F8FAFC",
-              }}
+              defaultValue=""
+              style={inp}
             />
           </div>
 
           <div style={{ marginBottom: "20px" }}>
-            <label
-              style={{
-                display: "block",
-                fontSize: "11px",
-                fontWeight: 600,
-                color: "#64748B",
-                marginBottom: "4px",
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-              }}
-            >
-              Password
-            </label>
+            <label style={lbl}>Password</label>
             <input
+              ref={passwordRef}
               type="password"
               placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                borderRadius: "6px",
-                border: "1px solid #E2E8F0",
-                fontSize: "14px",
-                outline: "none",
-                boxSizing: "border-box",
-                background: "#F8FAFC",
-              }}
+              defaultValue=""
+              style={inp}
             />
           </div>
 
           <button
             type="submit"
-            disabled={loading}
             style={{
               width: "100%",
               padding: "12px",
               borderRadius: "8px",
-              background: loading ? "#94A3B8" : "#2D8C4E",
+              background: "#2D8C4E",
               color: "#fff",
               border: "none",
               fontSize: "14px",
               fontWeight: 700,
-              cursor: loading ? "not-allowed" : "pointer",
+              cursor: "pointer",
             }}
           >
-            {loading ? "Signing in..." : "Sign In"}
+            Sign In
           </button>
         </form>
 
-        <p
+        <div
           style={{
-            textAlign: "center",
-            fontSize: "13px",
-            color: "#64748B",
-            marginTop: "16px",
+            display: "flex",
+            justifyContent: "space-between",
+            marginTop: "14px",
           }}
         >
-          No account?{" "}
           <Link
-            href="/signup"
+            href="/forget-password"
             style={{
+              fontSize: "13px",
               color: "#2D8C4E",
-              fontWeight: 600,
               textDecoration: "none",
             }}
           >
-            Sign up
+            Forgot password?
           </Link>
-        </p>
+          <Link
+            href="/signup"
+            style={{
+              fontSize: "13px",
+              color: "#2D8C4E",
+              textDecoration: "none",
+              fontWeight: 600,
+            }}
+          >
+            Sign up →
+          </Link>
+        </div>
 
-        {/* FIX: Disclaimer ALL CAPS */}
+        {/* ALL CAPS Disclaimer */}
         <div
           style={{
             marginTop: "24px",
@@ -196,9 +156,10 @@ export default function LoginPage() {
               color: "#94A3B8",
               lineHeight: "1.7",
               textAlign: "center",
-              textTransform: "uppercase", // ← ALL CAPS
+              textTransform: "uppercase",
               fontWeight: 600,
               letterSpacing: "0.03em",
+              margin: 0,
             }}
           >
             THIS SOFTWARE AND REPORTS GENERATED ARE FOR INFORMATIONAL PURPOSES
@@ -212,3 +173,25 @@ export default function LoginPage() {
     </div>
   );
 }
+
+const lbl: React.CSSProperties = {
+  display: "block",
+  fontSize: "11px",
+  fontWeight: 600,
+  color: "#64748B",
+  marginBottom: "4px",
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+};
+
+const inp: React.CSSProperties = {
+  width: "100%",
+  padding: "10px 12px",
+  borderRadius: "6px",
+  border: "1px solid #E2E8F0",
+  fontSize: "14px",
+  outline: "none",
+  boxSizing: "border-box",
+  background: "#F8FAFC",
+  color: "#0F172A",
+};
