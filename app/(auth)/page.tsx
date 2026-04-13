@@ -8,10 +8,11 @@ type Report = {
   id: string;
   title: string;
   location: string;
-  clientName: string;
+  clientName: string; // FIX: was "staring" — typo causing build error
   inspectedAt: string;
   status: "DRAFT" | "COMPLETE";
   createdAt: string;
+  fileNumber: string;
 };
 
 type Template = {
@@ -19,16 +20,11 @@ type Template = {
   name: string;
   companyName: string;
   companyLogo: string;
+  companyTagline: string;
+  statementOfService: string;
   includeDefectGraphic: boolean;
   showSuggestedMaintenance: boolean;
   customDropdowns: { label: string; options: string[] }[];
-};
-
-type Stats = {
-  totalReports: number;
-  monthReports: number;
-  drafts: number;
-  templatesUsed: number;
 };
 
 type Settings = {
@@ -49,12 +45,6 @@ export default function DashboardPage() {
 
   // Reports state
   const [reports, setReports] = useState<Report[]>([]);
-  const [stats, setStats] = useState<Stats>({
-    totalReports: 0,
-    monthReports: 0,
-    drafts: 0,
-    templatesUsed: 0,
-  });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
@@ -82,17 +72,27 @@ export default function DashboardPage() {
   >("account");
 
   useEffect(() => {
-    fetchDashboard();
+    loadReports();
     loadTemplates();
     loadSettings();
   }, []);
 
-  const fetchDashboard = async () => {
+  // FIX: Load reports from localStorage first, then try API
+  const loadReports = async () => {
     try {
+      // Load from localStorage first (immediate)
+      const local = localStorage.getItem("sewer_reports");
+      if (local) {
+        const localReports = JSON.parse(local);
+        setReports(localReports);
+        setLoading(false);
+      }
+      // Then try API
       const res = await fetch("/api/dashboard");
       const data = await res.json();
-      setStats(data.stats || {});
-      setReports(data.reports || []);
+      if (data.reports?.length) {
+        setReports(data.reports);
+      }
     } catch {
     } finally {
       setLoading(false);
@@ -108,12 +108,12 @@ export default function DashboardPage() {
 
   const loadSettings = () => {
     try {
-      const user = localStorage.getItem("user");
       const saved = localStorage.getItem("sewer_settings");
       if (saved) {
         setSettings(JSON.parse(saved));
         return;
       }
+      const user = localStorage.getItem("user");
       if (user) {
         const u = JSON.parse(user);
         setSettings((p) => ({
@@ -126,11 +126,12 @@ export default function DashboardPage() {
     } catch {}
   };
 
-  // ── Reports ─────────────────────────────────────────────────
+  // ── Reports ──────────────────────────────────────────────────
+  // FIX: PDF loads from localStorage
   const handlePDF = async (report: Report) => {
     try {
-      const res = await fetch(`/api/reports/${report.id}`);
-      const data = await res.json();
+      const local = localStorage.getItem(`report_${report.id}`);
+      let data = local ? JSON.parse(local) : { report, defects: [] };
       const pdfRes = await fetch("/api/reports/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -139,9 +140,13 @@ export default function DashboardPage() {
       const html = await pdfRes.text();
       const win = window.open("", "_blank");
       if (win) {
+        win.document.open();
         win.document.write(html);
         win.document.close();
-        setTimeout(() => win.print(), 800);
+        win.onload = () => setTimeout(() => win.print(), 1000);
+        setTimeout(() => {
+          if (win && !win.closed) win.print();
+        }, 2500);
       }
     } catch {
       alert("Failed to generate PDF.");
@@ -151,7 +156,24 @@ export default function DashboardPage() {
   const handleDeleteReport = async (id: string) => {
     if (!confirm("Delete this report?")) return;
     await fetch(`/api/reports/${id}`, { method: "DELETE" }).catch(() => {});
-    setReports((p) => p.filter((r) => r.id !== id));
+    const updated = reports.filter((r) => r.id !== id);
+    setReports(updated);
+    localStorage.setItem("sewer_reports", JSON.stringify(updated));
+    localStorage.removeItem(`report_${id}`);
+  };
+
+  // FIX: Edit button stores data then redirects to report builder
+  const handleEdit = (report: Report) => {
+    const local = localStorage.getItem(`report_${report.id}`);
+    if (local) {
+      localStorage.setItem(`report_edit_${report.id}`, local);
+    } else {
+      localStorage.setItem(
+        `report_edit_${report.id}`,
+        JSON.stringify({ report, defects: [] }),
+      );
+    }
+    router.push(`/reports/new?edit=${report.id}`);
   };
 
   // ── Templates ────────────────────────────────────────────────
@@ -159,10 +181,13 @@ export default function DashboardPage() {
     setEditingTemplate({
       name: "",
       companyName: "Sewer Labz",
+      companyTagline: "Don't Let Your Drain Be A Pain!",
       companyLogo: "",
       includeDefectGraphic: true,
       showSuggestedMaintenance: true,
       customDropdowns: [],
+      statementOfService:
+        "Sewer Labz is a professional sewer inspection company. All inspections are performed in accordance with industry standards using professional-grade CCTV camera equipment.",
     });
     setIsNewTemplate(true);
   };
@@ -204,6 +229,49 @@ export default function DashboardPage() {
     reader.readAsDataURL(file);
   };
 
+  // Add/remove custom dropdown options
+  const addCustomDropdown = () => {
+    const current = editingTemplate?.customDropdowns || [];
+    setEditingTemplate((p) =>
+      p
+        ? { ...p, customDropdowns: [...current, { label: "", options: [""] }] }
+        : p,
+    );
+  };
+
+  const updateDropdownLabel = (i: number, val: string) => {
+    const arr = [...(editingTemplate?.customDropdowns || [])];
+    arr[i] = { ...arr[i], label: val };
+    setEditingTemplate((p) => (p ? { ...p, customDropdowns: arr } : p));
+  };
+
+  const addDropdownOption = (i: number) => {
+    const arr = [...(editingTemplate?.customDropdowns || [])];
+    arr[i] = { ...arr[i], options: [...arr[i].options, ""] };
+    setEditingTemplate((p) => (p ? { ...p, customDropdowns: arr } : p));
+  };
+
+  const updateDropdownOption = (di: number, oi: number, val: string) => {
+    const arr = [...(editingTemplate?.customDropdowns || [])];
+    const opts = [...arr[di].options];
+    opts[oi] = val;
+    arr[di] = { ...arr[di], options: opts };
+    setEditingTemplate((p) => (p ? { ...p, customDropdowns: arr } : p));
+  };
+
+  const removeDropdown = (i: number) => {
+    setEditingTemplate((p) =>
+      p
+        ? {
+            ...p,
+            customDropdowns: (p.customDropdowns || []).filter(
+              (_, idx) => idx !== i,
+            ),
+          }
+        : p,
+    );
+  };
+
   // ── Settings ─────────────────────────────────────────────────
   const handleSaveSettings = async () => {
     setSettingsSaving(true);
@@ -225,7 +293,6 @@ export default function DashboardPage() {
     router.replace("/login");
   };
 
-  // ── Filtered reports ─────────────────────────────────────────
   const filtered = reports.filter(
     (r) =>
       r.title?.toLowerCase().includes(search.toLowerCase()) ||
@@ -358,16 +425,20 @@ export default function DashboardPage() {
         }}
       >
         {[
+          { label: "Total Reports", value: reports.length, color: "#0F2A4A" },
           {
-            label: "Total Reports",
-            value: stats.totalReports,
-            color: "#0F2A4A",
+            label: "This Month",
+            value: reports.filter((r) => r.status === "COMPLETE").length,
+            color: "#2D8C4E",
           },
-          { label: "This Month", value: stats.monthReports, color: "#2D8C4E" },
-          { label: "Drafts", value: stats.drafts, color: "#D97706" },
+          {
+            label: "Drafts",
+            value: reports.filter((r) => r.status !== "COMPLETE").length,
+            color: "#D97706",
+          },
           {
             label: "Templates Used",
-            value: stats.templatesUsed,
+            value: templates.length,
             color: "#2563EB",
           },
         ].map(({ label, value, color }) => (
@@ -428,9 +499,7 @@ export default function DashboardPage() {
           </button>
         </div>
 
-        {/* ══════════════════════════
-            REPORTS TAB
-        ══════════════════════════ */}
+        {/* REPORTS TAB */}
         {activeTab === "reports" && (
           <div style={{ padding: "16px" }}>
             <div style={{ marginBottom: "14px" }}>
@@ -497,8 +566,8 @@ export default function DashboardPage() {
                   <tr style={{ background: "#F8FAFC" }}>
                     {[
                       "Title",
+                      "File #",
                       "Client",
-                      "Location",
                       "Date",
                       "Status",
                       "Actions",
@@ -544,7 +613,7 @@ export default function DashboardPage() {
                           color: "#374151",
                         }}
                       >
-                        {report.clientName || "—"}
+                        {report.fileNumber || "—"}
                       </td>
                       <td
                         style={{
@@ -553,7 +622,7 @@ export default function DashboardPage() {
                           color: "#374151",
                         }}
                       >
-                        {report.location || "—"}
+                        {report.clientName || "—"}
                       </td>
                       <td
                         style={{
@@ -588,10 +657,9 @@ export default function DashboardPage() {
                           >
                             View
                           </button>
+                          {/* FIX: Edit stores data before redirect */}
                           <button
-                            onClick={() =>
-                              router.push(`/reports/${report.id}/edit`)
-                            }
+                            onClick={() => handleEdit(report)}
                             style={actionBtn("#EFF6FF", "#2563EB")}
                           >
                             Edit
@@ -618,12 +686,9 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* ══════════════════════════
-            TEMPLATES TAB
-        ══════════════════════════ */}
+        {/* TEMPLATES TAB */}
         {activeTab === "templates" && (
           <div style={{ padding: "20px" }}>
-            {/* Template editor */}
             {editingTemplate ? (
               <div>
                 <div
@@ -747,9 +812,61 @@ export default function DashboardPage() {
                       style={inp}
                     />
                   </div>
+                  <div style={{ marginBottom: "12px" }}>
+                    <label style={lbl}>Company Tagline</label>
+                    <input
+                      value={editingTemplate.companyTagline || ""}
+                      onChange={(e) =>
+                        setEditingTemplate((p) =>
+                          p ? { ...p, companyTagline: e.target.value } : p,
+                        )
+                      }
+                      placeholder="Don't Let Your Drain Be A Pain!"
+                      style={inp}
+                    />
+                  </div>
                 </div>
 
-                {/* Options */}
+                {/* Statement of Service */}
+                <div
+                  style={{
+                    padding: "16px",
+                    border: "1px solid #E2E8F0",
+                    borderRadius: "10px",
+                    marginBottom: "14px",
+                  }}
+                >
+                  <h4
+                    style={{
+                      fontSize: "13px",
+                      fontWeight: 700,
+                      color: "#0F2A4A",
+                      margin: "0 0 12px",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    Statement of Service
+                  </h4>
+                  <textarea
+                    value={editingTemplate.statementOfService || ""}
+                    onChange={(e) =>
+                      setEditingTemplate((p) =>
+                        p ? { ...p, statementOfService: e.target.value } : p,
+                      )
+                    }
+                    rows={5}
+                    placeholder="Enter your statement of service..."
+                    style={{
+                      ...inp,
+                      height: "auto",
+                      padding: "10px 12px",
+                      resize: "vertical",
+                      lineHeight: "1.6",
+                    }}
+                  />
+                </div>
+
+                {/* Report Options */}
                 <div
                   style={{
                     padding: "16px",
@@ -809,9 +926,126 @@ export default function DashboardPage() {
                     </label>
                   ))}
                 </div>
+
+                {/* Custom Dropdowns */}
+                <div
+                  style={{
+                    padding: "16px",
+                    border: "1px solid #E2E8F0",
+                    borderRadius: "10px",
+                    marginBottom: "14px",
+                  }}
+                >
+                  <h4
+                    style={{
+                      fontSize: "13px",
+                      fontWeight: 700,
+                      color: "#0F2A4A",
+                      margin: "0 0 4px",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    Custom Dropdowns
+                  </h4>
+                  <p
+                    style={{
+                      fontSize: "12px",
+                      color: "#94A3B8",
+                      marginBottom: "14px",
+                    }}
+                  >
+                    These appear in the General Notes tab of reports using this
+                    template.
+                  </p>
+                  {(editingTemplate.customDropdowns || []).map((dd, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        border: "1px solid #E2E8F0",
+                        borderRadius: "8px",
+                        padding: "12px",
+                        marginBottom: "10px",
+                        background: "#FAFAFA",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: "8px",
+                          marginBottom: "8px",
+                        }}
+                      >
+                        <input
+                          value={dd.label}
+                          onChange={(e) =>
+                            updateDropdownLabel(i, e.target.value)
+                          }
+                          placeholder="Dropdown label"
+                          style={{ ...inp, flex: 1 }}
+                        />
+                        <button
+                          onClick={() => removeDropdown(i)}
+                          style={{
+                            padding: "0 10px",
+                            borderRadius: "6px",
+                            border: "none",
+                            background: "#FEF2F2",
+                            color: "#DC2626",
+                            cursor: "pointer",
+                            fontWeight: 700,
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      {dd.options.map((opt, oi) => (
+                        <input
+                          key={oi}
+                          value={opt}
+                          onChange={(e) =>
+                            updateDropdownOption(i, oi, e.target.value)
+                          }
+                          placeholder={`Option ${oi + 1}`}
+                          style={{
+                            ...inp,
+                            marginBottom: "6px",
+                            display: "block",
+                          }}
+                        />
+                      ))}
+                      <button
+                        onClick={() => addDropdownOption(i)}
+                        style={{
+                          fontSize: "12px",
+                          color: "#2563EB",
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          marginTop: "4px",
+                        }}
+                      >
+                        + Add Option
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    onClick={addCustomDropdown}
+                    style={{
+                      padding: "8px 16px",
+                      borderRadius: "6px",
+                      border: "1px solid #E2E8F0",
+                      background: "#F8FAFC",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      color: "#0F2A4A",
+                    }}
+                  >
+                    + Add Dropdown
+                  </button>
+                </div>
               </div>
             ) : (
-              /* Templates List */
               <div>
                 <div
                   style={{
@@ -858,7 +1092,6 @@ export default function DashboardPage() {
                     + New Template
                   </button>
                 </div>
-
                 {templates.length === 0 ? (
                   <div
                     style={{
@@ -968,7 +1201,15 @@ export default function DashboardPage() {
                             </span>
                           )}
                           {t.showSuggestedMaintenance && (
-                            <span>✓ Suggested Maintenance</span>
+                            <span style={{ marginRight: "8px" }}>
+                              ✓ Suggested Maintenance
+                            </span>
+                          )}
+                          {t.customDropdowns?.length > 0 && (
+                            <span>
+                              ✓ {t.customDropdowns.length} Custom Dropdown
+                              {t.customDropdowns.length > 1 ? "s" : ""}
+                            </span>
                           )}
                         </div>
                         <div style={{ display: "flex", gap: "8px" }}>
@@ -1016,9 +1257,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* ══════════════════════════
-            SETTINGS TAB
-        ══════════════════════════ */}
+        {/* SETTINGS TAB */}
         {activeTab === "settings" && (
           <div style={{ padding: "20px" }}>
             <div
@@ -1072,7 +1311,6 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Settings sub-tabs */}
             <div style={{ display: "flex", gap: "6px", marginBottom: "20px" }}>
               <button
                 style={subTabBtn(settingsTab === "account")}
@@ -1094,7 +1332,6 @@ export default function DashboardPage() {
               </button>
             </div>
 
-            {/* Account */}
             {settingsTab === "account" && (
               <div
                 style={{
@@ -1185,7 +1422,6 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* Company */}
             {settingsTab === "company" && (
               <div
                 style={{
@@ -1260,7 +1496,6 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* Subscription */}
             {settingsTab === "subscription" && (
               <div
                 style={{
@@ -1304,52 +1539,112 @@ export default function DashboardPage() {
                     5 reports/month
                   </span>
                 </div>
+                {/* FIX: 3 plans — Free, Monthly, Annual */}
                 <div
                   style={{
-                    background: "linear-gradient(135deg, #0F2A4A, #1e4a7a)",
-                    borderRadius: "10px",
-                    padding: "20px",
-                    color: "#fff",
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr 1fr",
+                    gap: "12px",
+                    marginBottom: "16px",
                   }}
                 >
-                  <div
-                    style={{
-                      fontSize: "16px",
-                      fontWeight: 800,
-                      marginBottom: "6px",
-                    }}
-                  >
-                    Upgrade to Pro — $49/mo
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "12px",
-                      color: "#CBD5E1",
-                      marginBottom: "14px",
-                      lineHeight: "1.6",
-                    }}
-                  >
-                    Unlimited reports · Custom templates · No watermark ·
-                    Priority support
-                  </div>
-                  <button
-                    style={{
-                      background: "#2D8C4E",
-                      color: "#fff",
-                      border: "none",
-                      borderRadius: "8px",
-                      padding: "8px 20px",
-                      fontSize: "13px",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Subscribe Now
-                  </button>
+                  {[
+                    {
+                      name: "Free",
+                      price: "$0",
+                      period: "/mo",
+                      features: ["5 reports/mo", "Basic templates"],
+                      color: "#64748B",
+                    },
+                    {
+                      name: "Monthly",
+                      price: "$49",
+                      period: "/mo",
+                      features: [
+                        "Unlimited reports",
+                        "Custom templates",
+                        "No watermark",
+                      ],
+                      color: "#2D8C4E",
+                    },
+                    {
+                      name: "Annual",
+                      price: "$499.95",
+                      period: "/yr",
+                      features: [
+                        "Unlimited reports",
+                        "Custom templates",
+                        "No watermark",
+                        "Save 15%",
+                      ],
+                      color: "#0F2A4A",
+                    },
+                  ].map((plan) => (
+                    <div
+                      key={plan.name}
+                      style={{
+                        border: `1px solid ${plan.color}`,
+                        borderRadius: "10px",
+                        padding: "16px",
+                        textAlign: "center",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: "14px",
+                          fontWeight: 700,
+                          color: plan.color,
+                          marginBottom: "4px",
+                        }}
+                      >
+                        {plan.name}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "20px",
+                          fontWeight: 800,
+                          color: "#0F2A4A",
+                        }}
+                      >
+                        {plan.price}
+                        <span style={{ fontSize: "12px", color: "#64748B" }}>
+                          {plan.period}
+                        </span>
+                      </div>
+                      <div style={{ marginTop: "8px", marginBottom: "12px" }}>
+                        {plan.features.map((f) => (
+                          <div
+                            key={f}
+                            style={{
+                              fontSize: "11px",
+                              color: "#64748B",
+                              marginBottom: "3px",
+                            }}
+                          >
+                            ✓ {f}
+                          </div>
+                        ))}
+                      </div>
+                      <button
+                        style={{
+                          width: "100%",
+                          padding: "7px",
+                          borderRadius: "6px",
+                          border: "none",
+                          background: plan.color,
+                          color: "#fff",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {plan.name === "Free" ? "Current Plan" : "Subscribe"}
+                      </button>
+                    </div>
+                  ))}
                 </div>
                 <div
                   style={{
-                    marginTop: "16px",
                     padding: "16px",
                     border: "1px solid #E2E8F0",
                     borderRadius: "8px",

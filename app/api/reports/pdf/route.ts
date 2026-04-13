@@ -1,227 +1,221 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { report, defects } = body;
+    const body = await req.json()
+    const { report, defects } = body
 
     const footer = `
       <div class="report-footer">
         This report was prepared for the client listed above in accordance with our inspection agreement.<br>
         <strong>This report is not to be used for the purposes of substitute disclosure.</strong>
       </div>
-    `;
+    `
 
     const header = (date: string, ref: string) => `
       <div class="report-header">
         <span>${date}</span>
         <span>Inspection Report Exclusively For: ${ref}</span>
       </div>
-    `;
+    `
 
-    const ref = report.fileNumber || report.clientName || "";
-    const date = report.inspectedAt || "";
+    const ref = report.fileNumber || report.clientName || ''
+    const date = report.inspectedAt || ''
 
-    // ── Corrective actions summary ──────────────────────────────
+    // ── Corrective actions ──────────────────────────────────────
     const correctiveRows = report.corrections
       ? Object.entries(report.corrections)
-          .filter(([, v]) => v && v !== "N/A")
-          .map(
-            ([label, value]) => `
+          .filter(([, v]) => v && v !== 'N/A')
+          .map(([label, value]) => `
             <div class="info-row">
               <span class="info-label">${label}</span>
               <span class="info-value">${value}</span>
-            </div>`,
-          )
-          .join("")
-      : "";
+            </div>`).join('')
+      : ''
 
     // ── Video links ─────────────────────────────────────────────
-    const videoLinksHtml =
-      report.videoLinks && report.videoLinks.length > 0
-        ? report.videoLinks
-            .map(
-              (link: string, i: number) => `
+    const videoLinksHtml = report.videoLinks && report.videoLinks.length > 0
+      ? report.videoLinks.map((link: string, i: number) => `
           <div class="info-row">
             <span class="info-label">Video Link ${i + 1}</span>
             <span class="info-value"><a href="${link}" style="color:#0066cc;">${link}</a></span>
-          </div>`,
-            )
-            .join("")
-        : "";
+          </div>`).join('')
+      : ''
 
-    // ── Property photos (up to 3) ────────────────────────────────
-    const photos: string[] =
-      report.propertyPhotos ||
-      (report.propertyPhoto ? [report.propertyPhoto] : []);
+    // ── Property photos ──────────────────────────────────────────
+    const photos: string[] = report.propertyPhotos || (report.propertyPhoto ? [report.propertyPhoto] : [])
 
-    const coverPhotoHtml =
-      photos.length > 0
-        ? `<img src="${photos[0]}" class="cover-photo" alt="Property" />`
-        : `<div class="cover-photo-placeholder">Property Photo</div>`;
+    // FIX: Only show first photo on cover, centered, full width
+    const coverPhotoHtml = photos.length > 0
+      ? `<img src="${photos[0]}" class="cover-photo" alt="Property" />`
+      : `<div class="cover-photo-placeholder">Property Photo</div>`
 
     // ── Defects ──────────────────────────────────────────────────
-    const defectsHtml =
-      defects.length === 0
-        ? '<p style="color:#999;font-size:13px;">No conditions recorded.</p>'
-        : defects
-            .map((d: any, i: number) => {
-              const time =
-                d.videoTimeH && d.videoTimeM
-                  ? `${d.videoTimeH}:${d.videoTimeM}`
-                  : d.videoTimeH || "--:--";
+    const defectsHtml = !defects || defects.length === 0
+      ? '<p style="color:#999;font-size:13px;">No conditions recorded.</p>'
+      : defects.map((d: any, i: number) => {
+          const time = (d.videoTimeH && d.videoTimeM)
+            ? `${d.videoTimeH}:${d.videoTimeM}`
+            : d.videoTimeH || '--:--'
 
-              const severityLabel =
-                d.severity && d.severity !== "No Defect"
-                  ? `; <span style="font-weight:700;color:${
-                      d.severity === "Major"
-                        ? "#DC2626"
-                        : d.severity === "Moderate"
-                          ? "#EA580C"
-                          : d.severity === "Minor"
-                            ? "#D97706"
-                            : d.severity === "Suggested Maintenance"
-                              ? "#2563EB"
-                              : "#16A34A"
-                    };">${d.severity}</span>`
-                  : "";
+          const severityLabel = d.severity && d.severity !== 'No Defect'
+            ? `; <span style="font-weight:700;color:${
+                d.severity === 'Major' ? '#DC2626'
+                : d.severity === 'Moderate' ? '#EA580C'
+                : d.severity === 'Minor' ? '#D97706'
+                : d.severity === 'Suggested Maintenance' ? '#2563EB'
+                : '#16A34A'
+              };">${d.severity}</span>`
+            : ''
 
-              const photosHtml =
-                d.images && d.images.length > 0
-                  ? `<div class="defect-photos">
-                ${d.images
-                  .map(
-                    (img: any, idx: number) => `
+          const photosHtml = d.images && d.images.length > 0
+            ? `<div class="defect-photos">
+                ${d.images.map((img: any, idx: number) => `
                   <div class="defect-photo-wrap">
                     <img src="${img.url}" class="defect-photo" alt="Photo ${idx + 1}" />
-                  </div>`,
-                  )
-                  .join("")}
+                  </div>`).join('')}
                </div>`
-                  : "";
+            : ''
 
-              return `
+          return `
             <div class="defect-item">
               <p class="defect-desc">
-                <strong>#${i + 1} @ ${time}${d.footageStart ? ` / ${d.footageStart} ft` : ""} —
-                ${d.conditionType !== "Select Condition Type" ? d.conditionType : "Observation"}${severityLabel}.</strong>
-                ${d.narrative ? ` ${d.narrative}` : ""}
+                <strong>#${i + 1} @ ${time}${d.footageStart ? ` / ${d.footageStart} ft` : ''} —
+                ${d.conditionType !== 'Select Condition Type' ? d.conditionType : 'Observation'}${severityLabel}.</strong>
+                ${d.narrative ? ` ${d.narrative}` : ''}
               </p>
               ${photosHtml}
-            </div>`;
-            })
-            .join("");
+            </div>`
+        }).join('')
+
+    // ── Common Sewer Defect Graphic (SVG inline) ─────────────────
+    const defectGraphicHtml = `
+    <div style="margin-top:20px;">
+      <div style="text-align:center;font-weight:700;text-decoration:underline;margin-bottom:12px;font-size:14px;">Common Sewer Defects</div>
+      <table style="width:100%;border-collapse:collapse;font-size:11px;">
+        <thead>
+          <tr style="background:#0F2A4A;color:#fff;">
+            <th style="padding:8px;text-align:left;border:1px solid #ddd;">Defect Type</th>
+            <th style="padding:8px;text-align:left;border:1px solid #ddd;">Description</th>
+            <th style="padding:8px;text-align:left;border:1px solid #ddd;">Severity</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${[
+            ['Root Intrusion',       'Tree/plant roots entering pipe through joints or cracks',           'Minor to Major'],
+            ['Offset Joint',         'Pipe sections misaligned at joints causing partial/full blockage',  'Moderate to Major'],
+            ['Circumferential Crack','Crack around full circumference of pipe, structural concern',        'Moderate to Major'],
+            ['Longitudinal Crack',   'Crack running along length of pipe',                                'Minor to Major'],
+            ['Erosion At Joint',     'Material worn away at pipe joints, weakening structure',            'Moderate'],
+            ['Debris Within Pipe',   'Grease, sediment, or foreign objects blocking flow',                'Minor to Major'],
+            ['Deteriorated Pipe',    'Pipe material degrading, pitting, or corroding',                    'Moderate to Major'],
+            ['Belly/Positive Grade', 'Section of pipe sagging, causing pooling and blockage',             'Moderate to Major'],
+            ['Infiltration',         'Groundwater entering pipe through cracks or joints',                'Moderate'],
+            ['Collapse',             'Pipe has partially or fully caved in',                              'Major'],
+          ].map(([type, desc, severity], i) => `
+            <tr style="background:${i % 2 === 0 ? '#fff' : '#f9f9f9'};">
+              <td style="padding:7px 8px;border:1px solid #ddd;font-weight:600;">${type}</td>
+              <td style="padding:7px 8px;border:1px solid #ddd;">${desc}</td>
+              <td style="padding:7px 8px;border:1px solid #ddd;color:${
+                severity.includes('Major') ? '#DC2626' : severity.includes('Moderate') ? '#EA580C' : '#D97706'
+              };font-weight:600;">${severity}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`
 
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Sewer Inspection Report — ${report.location || ""}</title>
+<title>Sewer Inspection Report</title>
 <style>
-  /* ── Reset ── */
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: Arial, sans-serif; color: #000; background: #fff; font-size: 13px; }
-
-  /* ── Page wrapper ── */
   .page { padding: 40px 50px; position: relative; min-height: 100vh; }
 
-  /* ── Cover ── */
+  /* ── Cover — FIX: no address/date box, photo full width ── */
   .cover {
     display: flex; flex-direction: column; align-items: center;
-    padding: 40px 50px 0;          /* top padding only — footer pins to bottom */
+    padding: 30px 50px 120px;
     min-height: 100vh; position: relative;
   }
-  .cover-logo { font-size: 48px; font-weight: 900; letter-spacing: -1px; margin-bottom: 6px; }
+  .cover-logo { font-size: 52px; font-weight: 900; letter-spacing: -1px; margin-bottom: 4px; }
   .cover-logo span { color: #2D8C4E; }
   .cover-tagline { font-size: 16px; color: #2D8C4E; font-weight: 700; margin-bottom: 4px; }
-  .cover-subtitle { font-size: 14px; color: #444; margin-bottom: 28px; }
+  .cover-subtitle { font-size: 14px; color: #444; margin-bottom: 24px; }
+
+  /* FIX: Cover photo full width, properly centered, more space */
   .cover-photo {
-    width: 100%; max-width: 620px; height: 360px;
+    width: 100%; max-width: 680px; height: 420px;
     object-fit: cover; object-position: center;
-    border-radius: 4px; border: 1px solid #ddd; display: block; margin: 0 auto 28px;
+    border-radius: 4px; display: block; margin: 0 auto;
   }
   .cover-photo-placeholder {
-    width: 100%; max-width: 620px; height: 360px;
-    background: #f0f0f0; border-radius: 4px; border: 1px solid #ddd;
+    width: 100%; max-width: 680px; height: 420px;
+    background: #f0f0f0; border-radius: 4px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 14px; color: #999; margin: 0 auto 28px;
+    font-size: 14px; color: #999; margin: 0 auto;
   }
-  /* Address + date block */
-  .cover-address { font-size: 18px; font-weight: 700; text-align: center; margin-bottom: 6px; }
-  .cover-date    { font-size: 14px; color: #555; text-align: center; margin-bottom: 0; }
 
-  /* Disclaimer pinned to bottom of cover */
+  /* FIX: Disclaimer pinned to bottom — NO address/date box */
   .cover-disclaimer {
-    position: absolute; bottom: 40px; left: 50px; right: 50px;
+    position: absolute; bottom: 30px; left: 50px; right: 50px;
     font-size: 11px; color: #555; line-height: 1.7;
-    border-top: 1px solid #ddd; padding-top: 14px; text-align: center;
+    border-top: 1px solid #ddd; padding-top: 12px; text-align: center;
   }
 
-  /* ── Page break ── */
   .page-break { page-break-after: always; }
 
-  /* ── Running header / footer ── */
+  /* FIX: No browser header/footer via CSS */
+  @page { margin: 0.5in; }
+
   .report-header {
     display: flex; justify-content: space-between; align-items: center;
     border-bottom: 1px solid #000; padding-bottom: 8px; margin-bottom: 20px;
     font-size: 11px; color: #555;
   }
-  /* Footer pinned to bottom of each content page */
   .report-footer {
-    position: absolute; bottom: 30px; left: 50px; right: 50px;
+    position: absolute; bottom: 20px; left: 50px; right: 50px;
     border-top: 1px solid #ddd; padding-top: 8px;
     font-size: 10px; color: #888; text-align: center; line-height: 1.6;
   }
 
-  /* ── Headings ── */
   .section-title {
-    font-size: 18px; font-weight: 900; text-decoration: underline;
-    text-align: center; margin: 24px 0 16px; text-transform: uppercase;
+    font-size: 17px; font-weight: 900; text-decoration: underline;
+    text-align: center; margin: 20px 0 14px; text-transform: uppercase;
   }
   .section-subtitle {
     font-size: 14px; font-weight: 700; text-transform: uppercase;
     border-bottom: 1px solid #000; padding-bottom: 4px; margin-bottom: 12px;
   }
 
-  /* ── TOC ── */
   .toc-item { padding: 6px 0; font-size: 14px; border-bottom: 1px dotted #ddd; }
 
-  /* ── Info rows ── */
   .info-row { display: flex; margin-bottom: 8px; }
   .info-label { font-weight: 700; font-size: 12px; min-width: 160px; text-transform: uppercase; }
   .info-value { font-size: 13px; color: #222; }
 
-  /* ── System rows ── */
   .system-row { margin-bottom: 12px; }
   .system-label { font-weight: 700; font-size: 12px; text-transform: uppercase; margin-bottom: 4px; }
   .system-value { font-size: 13px; color: #222; padding: 8px; background: #f9f9f9; border-radius: 4px; border: 1px solid #eee; }
 
-  /* ── Defects ── */
   .defect-item { margin-bottom: 24px; page-break-inside: avoid; }
   .defect-desc { font-size: 13px; line-height: 1.7; margin-bottom: 10px; }
   .defect-photos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 8px; }
-  .defect-photo-wrap { position: relative; }
-  /* FIX: photos centered, no time/ft label underneath */
   .defect-photo {
     width: 100%; height: 200px;
     object-fit: cover; object-position: center;
     border: 1px solid #ddd; border-radius: 4px; display: block;
   }
 
-  /* ── End of report / corrections ── */
-  .end-title { font-size: 15px; font-weight: 700; border-bottom: 1px solid #000; padding-bottom: 4px; margin-bottom: 12px; margin-top: 20px; }
   .end-comment { font-size: 13px; line-height: 1.8; margin-bottom: 8px; }
-  .correction-row { display: flex; padding: 6px 0; border-bottom: 1px dotted #eee; font-size: 13px; }
-  .correction-label { font-weight: 700; min-width: 180px; text-transform: uppercase; font-size: 12px; }
+  .disclosure-text { font-size: 13px; line-height: 1.8; margin-bottom: 14px; font-weight: 700; }
 
-  /* ── Material table ── */
   .material-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-  .material-table th { background: #f0f0f0; font-size: 12px; font-weight: 700; padding: 8px 12px; text-align: left; border: 1px solid #ddd; }
+  .material-table th { background: #0F2A4A; color: #fff; font-size: 12px; font-weight: 700; padding: 8px 12px; text-align: left; border: 1px solid #ddd; }
   .material-table td { font-size: 12px; padding: 7px 12px; border: 1px solid #ddd; }
   .material-table tr:nth-child(even) td { background: #fafafa; }
-
-  /* ── Disclosure ── */
-  .disclosure-text { font-size: 13px; line-height: 1.8; margin-bottom: 14px; font-weight: 700; }
 
   @media print {
     .page-break { page-break-after: always; }
@@ -231,26 +225,16 @@ export async function POST(req: NextRequest) {
 </head>
 <body>
 
-<!-- ══════════════════════════════════════════════════
-     COVER PAGE
-══════════════════════════════════════════════════ -->
+<!-- COVER PAGE — FIX: No address/date box below photo -->
 <div class="cover page-break">
-  <!-- Logo + tagline — pulled up, more room for photo -->
   <div class="cover-logo">SEWER <span>LABZ</span></div>
-  <div class="cover-tagline">Don't Let Your Drain Be A Pain!</div>
+  <div class="cover-tagline">${report.companyTagline || "Don't Let Your Drain Be A Pain!"}</div>
   <div class="cover-subtitle">Professional Sewer Inspection Report</div>
 
-  <!-- Cover photo — centered, auto-fit -->
   ${coverPhotoHtml}
 
-  <!-- Address + date above disclaimer -->
-  <div class="cover-address">${report.location || "Property Address"}</div>
-  <div class="cover-date">${date}</div>
-
-  <!-- Disclaimer pinned to bottom -->
+  <!-- FIX: Disclaimer only at bottom — NO duplicate address/date box -->
   <div class="cover-disclaimer">
-    ${report.location ? `<strong>${report.location}</strong><br>` : ""}
-    ${date ? `${date}<br><br>` : ""}
     This report was prepared for the client listed above in accordance with our inspection agreement and is subject to
     the terms and conditions agreed upon therein. A verbal consultation is part of this report. If you were not present
     during the inspection, call our office for a full discussion of the entire report.
@@ -259,35 +243,23 @@ export async function POST(req: NextRequest) {
   </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════
-     TABLE OF CONTENTS
-══════════════════════════════════════════════════ -->
+<!-- TABLE OF CONTENTS -->
 <div class="page page-break">
   ${header(date, ref)}
   <div class="section-title">Table of Contents</div>
   ${[
-    "Cover Page",
-    "Table of Contents",
-    "Sewer Inspection Disclosure",
-    "Scope of the Sewer Inspection",
-    "Point of Reference",
-    "Client & Site Information",
-    "Sewer System Information",
-    "Sewer Pipe Conditions",
-    "General Notes",
-    "Corrective Action Recommendations",
-    "End of Report",
-    "Statement of Service",
-    "Understanding Sewer Material & Defects",
-  ]
-    .map((item) => `<div class="toc-item">${item}</div>`)
-    .join("")}
+    'Cover Page', 'Table of Contents', 'Sewer Inspection Disclosure',
+    'Scope of the Sewer Inspection', 'Point of Reference',
+    'Client & Site Information', 'Sewer System Information',
+    'Sewer Pipe Conditions', 'General Notes',
+    'Corrective Action Recommendations', 'End of Report',
+    'Statement of Service', 'Understanding Sewer Material & Defects',
+    'Common Sewer Defects Reference',
+  ].map(item => `<div class="toc-item">${item}</div>`).join('')}
   ${footer}
 </div>
 
-<!-- ══════════════════════════════════════════════════
-     DISCLOSURE + SCOPE + POINT OF REFERENCE
-══════════════════════════════════════════════════ -->
+<!-- DISCLOSURE + SCOPE + POINT OF REFERENCE -->
 <div class="page page-break">
   ${header(date, ref)}
   <div class="section-title">Sewer Line Inspection Disclosure</div>
@@ -305,9 +277,7 @@ export async function POST(req: NextRequest) {
   ${footer}
 </div>
 
-<!-- ══════════════════════════════════════════════════
-     CLIENT & SITE INFO
-══════════════════════════════════════════════════ -->
+<!-- CLIENT & SITE INFO -->
 <div class="page page-break">
   ${header(date, ref)}
   <div class="section-subtitle">Client & Site Information</div>
@@ -316,125 +286,79 @@ export async function POST(req: NextRequest) {
     <div style="flex:1;">
       <div style="font-weight:700;font-size:13px;text-decoration:underline;margin-bottom:12px;">FILE / DATE / TIME</div>
       ${[
-        ["File #", report.fileNumber],
-        ["Client Name", report.clientName],
-        ["Location", report.location],
-        ["Date", date],
-        ["Time", report.inspectionTime],
-        ["People Present", report.peoplePresent],
-        ["Buyer's Agent", report.buyersAgent],
-        ["Building Occupied", report.buildingOccupied],
-        ["Weather / Soil", report.weather],
-      ]
-        .filter(([, v]) => v)
-        .map(
-          ([label, value]) => `
+        ['File #',            report.fileNumber],
+        ['Client Name',       report.clientName],
+        ['Location',          report.location],
+        ['Date',              date],
+        ['Time',              report.inspectionTime],
+        ['People Present',    Array.isArray(report.peoplePresent) ? report.peoplePresent.join(', ') : report.peoplePresent],
+        ["Buyer's Agent",     report.buyersAgent],
+        ['Building Occupied', report.buildingOccupied],
+        ['Weather / Soil',    report.weather],
+        ['Inspector',         report.inspector],
+      ].filter(([, v]) => v).map(([label, value]) => `
         <div class="info-row">
           <span class="info-label">${label}</span>
           <span class="info-value">${value}</span>
-        </div>`,
-        )
-        .join("")}
+        </div>`).join('')}
     </div>
-    ${
-      photos.length > 0
-        ? `
+    ${photos.length > 0 ? `
     <div style="flex-shrink:0;">
-      <img src="${photos[0]}"
-        style="width:180px;height:140px;object-fit:cover;object-position:center;
-               border:1px solid #ddd;border-radius:4px;display:block;" alt="Property" />
-    </div>`
-        : ""
-    }
+      <img src="${photos[0]}" style="width:180px;height:140px;object-fit:cover;object-position:center;border:1px solid #ddd;border-radius:4px;display:block;" alt="Property" />
+    </div>` : ''}
   </div>
 
-  <!-- Additional property photos -->
-  ${
-    photos.length > 1
-      ? `
+  ${photos.length > 1 ? `
   <div style="display:grid;grid-template-columns:repeat(${Math.min(photos.length - 1, 2)},1fr);gap:10px;margin-bottom:20px;">
-    ${photos
-      .slice(1)
-      .map(
-        (p) => `
-      <img src="${p}" style="width:100%;height:160px;object-fit:cover;object-position:center;
-        border:1px solid #ddd;border-radius:4px;display:block;" alt="Property" />`,
-      )
-      .join("")}
-  </div>`
-      : ""
-  }
+    ${photos.slice(1).map(p => `
+      <img src="${p}" style="width:100%;height:160px;object-fit:cover;object-position:center;border:1px solid #ddd;border-radius:4px;display:block;" alt="Property" />`).join('')}
+  </div>` : ''}
 
   ${footer}
 </div>
 
-<!-- ══════════════════════════════════════════════════
-     SEWER SYSTEM INFO
-══════════════════════════════════════════════════ -->
+<!-- SEWER SYSTEM INFO -->
 <div class="page page-break">
   ${header(date, ref)}
   <div class="section-subtitle">Sewer System Information</div>
 
-  ${
-    report.cleanoutLocation
-      ? `
+  ${report.cleanoutLocation ? `
   <div class="system-row">
     <div class="system-label">Location of Camera Entry / Cleanout</div>
     <div class="system-value">${report.cleanoutLocation}</div>
-  </div>`
-      : ""
-  }
+  </div>` : ''}
 
-  ${
-    report.pipeMaterials && report.pipeMaterials.length > 0
-      ? `
+  ${report.pipeMaterials && report.pipeMaterials.length > 0 ? `
   <div class="system-row">
     <div class="system-label">Sewer Pipe Material(s) Found</div>
-    <div class="system-value">${Array.isArray(report.pipeMaterials) ? report.pipeMaterials.join(", ") : report.pipeMaterials}</div>
-  </div>`
-      : ""
-  }
+    <div class="system-value">${Array.isArray(report.pipeMaterials) ? report.pipeMaterials.join(', ') : report.pipeMaterials}</div>
+  </div>` : ''}
 
-  ${
-    report.cameraDirection1 || report.cameraDirection2
-      ? `
+  ${report.cameraDirection1 || report.cameraDirection2 ? `
   <div class="system-row">
     <div class="system-label">Piping Section — Camera Direction(s)</div>
     <div class="system-value">
-      ${report.cameraDirection1 ? `<div><strong>1st Direction:</strong> ${report.cameraDirection1}</div>` : ""}
-      ${report.cameraDirection2 ? `<div style="margin-top:6px;"><strong>2nd Direction:</strong> ${report.cameraDirection2}</div>` : ""}
+      ${report.cameraDirection1 ? `<div style="margin-bottom:6px;"><strong>1st Direction:</strong> ${report.cameraDirection1}</div>` : ''}
+      ${report.cameraDirection2 ? `<div><strong>2nd Direction:</strong> ${report.cameraDirection2}</div>` : ''}
     </div>
-  </div>`
-      : ""
-  }
+  </div>` : ''}
 
-  ${
-    report.pipingNotes
-      ? `
+  ${report.pipingNotes ? `
   <div class="system-row">
     <div class="system-label">Additional Piping Notes</div>
     <div class="system-value">${report.pipingNotes}</div>
-  </div>`
-      : ""
-  }
+  </div>` : ''}
 
-  <!-- FIX: Video links — each on its own labeled line -->
-  ${
-    videoLinksHtml
-      ? `
+  ${videoLinksHtml ? `
   <div class="system-row">
     <div class="system-label">Sewer Video Link(s)</div>
     <div class="system-value">${videoLinksHtml}</div>
-  </div>`
-      : ""
-  }
+  </div>` : ''}
 
   ${footer}
 </div>
 
-<!-- ══════════════════════════════════════════════════
-     PIPE CONDITIONS
-══════════════════════════════════════════════════ -->
+<!-- PIPE CONDITIONS -->
 <div class="page page-break">
   ${header(date, ref)}
   <div class="section-subtitle">Sewer Piping Conditions</div>
@@ -442,134 +366,109 @@ export async function POST(req: NextRequest) {
   ${footer}
 </div>
 
-<!-- ══════════════════════════════════════════════════
-     GENERAL NOTES  (own section — not mixed with corrections)
-══════════════════════════════════════════════════ -->
-${
-  report.generalNotes
-    ? `
+<!-- GENERAL NOTES -->
+${report.generalNotes ? `
 <div class="page page-break">
   ${header(date, ref)}
   <div class="section-subtitle">General Notes / Comments</div>
   <p class="end-comment" style="white-space:pre-wrap;">${report.generalNotes}</p>
   ${footer}
-</div>`
-    : ""
-}
+</div>` : ''}
 
-<!-- ══════════════════════════════════════════════════
-     CORRECTIVE ACTION RECOMMENDATIONS
-══════════════════════════════════════════════════ -->
+<!-- CORRECTIVE ACTION RECOMMENDATIONS -->
 <div class="page page-break">
   ${header(date, ref)}
   <div class="section-subtitle">Corrective Action Recommendations</div>
 
-  ${
-    correctiveRows
-      ? `<div style="margin-bottom:16px;">${correctiveRows}</div>`
-      : '<p class="end-comment" style="color:#999;">No corrective actions selected.</p>'
-  }
+  ${correctiveRows
+    ? `<div style="margin-bottom:16px;">${correctiveRows}</div>`
+    : '<p class="end-comment" style="color:#999;">No corrective actions selected.</p>'}
 
-  ${
-    report.correctionNotes
-      ? `
+  ${report.correctionNotes ? `
   <div style="margin-top:16px;">
     <div class="system-label">Additional Notes</div>
     <div class="system-value" style="margin-top:4px;white-space:pre-wrap;">${report.correctionNotes}</div>
-  </div>`
-      : ""
-  }
+  </div>` : ''}
 
   <div style="margin-top:24px;padding:12px;background:#F8FAFC;border-radius:6px;border:1px solid #eee;">
     <p class="end-comment">Given the condition(s) above we recommend full evaluations and/or corrections with written findings and costs to cure by a competent licensed plumbing contractor before the end/close of the inspection contingency period.</p>
     <p class="end-comment">Recommend sewer inspections after repairs are made to ensure efficacy of work and to inspect any areas of the sewer lateral not visible due to defect(s).</p>
   </div>
-
   ${footer}
 </div>
 
-<!-- ══════════════════════════════════════════════════
-     STATEMENT OF SERVICE
-══════════════════════════════════════════════════ -->
+<!-- STATEMENT OF SERVICE -->
 <div class="page page-break">
   ${header(date, ref)}
   <div class="section-subtitle">Statement of Service</div>
-  <p class="disclosure-text">
-    Sewer Labz is a professional sewer inspection company. Our inspectors are trained and experienced in the assessment of residential and commercial sewer systems. All inspections are performed in accordance with industry standards using professional-grade CCTV camera equipment.
-  </p>
-  <p class="disclosure-text">
-    This inspection report represents a visual assessment only. Our findings are limited to conditions observable by camera at the time of inspection. Sewer Labz does not perform destructive testing and cannot be held responsible for conditions that are not visible or accessible during the camera inspection.
-  </p>
-  <p class="disclosure-text">
-    All recommendations contained within this report should be evaluated by a licensed plumbing contractor prior to any real estate transaction close date. Sewer Labz is available for follow-up consultations upon request.
-  </p>
+  <p class="disclosure-text">${report.statementOfService || 'Sewer Labz is a professional sewer inspection company. Our inspectors are trained and experienced in the assessment of residential and commercial sewer systems. All inspections are performed in accordance with industry standards using professional-grade CCTV camera equipment.'}</p>
+  <p class="disclosure-text">This inspection report represents a visual assessment only. Our findings are limited to conditions observable by camera at the time of inspection. Sewer Labz does not perform destructive testing and cannot be held responsible for conditions that are not visible or accessible during the camera inspection.</p>
+  <p class="disclosure-text">All recommendations contained within this report should be evaluated by a licensed plumbing contractor prior to any real estate transaction close date. Sewer Labz is available for follow-up consultations upon request.</p>
   ${footer}
 </div>
 
-<!-- ══════════════════════════════════════════════════
-     SEWER MATERIAL LIFE EXPECTANCY
-══════════════════════════════════════════════════ -->
-<div class="page">
+<!-- SEWER MATERIAL LIFE EXPECTANCY -->
+<div class="page page-break">
   ${header(date, ref)}
   <div class="section-title">Understanding Sewer Material &amp; Defects</div>
   <div style="text-align:center;font-weight:700;text-decoration:underline;margin-bottom:12px;">Sewer Line Material Life Expectancy</div>
 
   <table class="material-table">
-    <thead>
-      <tr><th>Material Type</th><th>Life Expectancy</th></tr>
-    </thead>
+    <thead><tr><th>Material Type</th><th>Life Expectancy</th></tr></thead>
     <tbody>
       ${[
-        ["Standard Dimensional Ratio (SDR)", "50–500 years"],
-        ["Polyvinyl Chloride (PVC)", "50–500 years"],
-        ["Acrylonitrile Butadiene Styrene (ABS)", "50–500 years"],
-        ["Vitrified Clay / Terracotta", "75–100 years"],
-        ["Cast Iron", "75–100 years"],
-        ["Concrete", "50–75 years"],
-        ["Transite / Asbestos Cement", "40–60 years"],
-        ["Bituminous Fiber / Orangeburg", "30–50 years"],
-        ["Cured in Place Pipe (CIPP)", "40+ years"],
-        ["High Density Polyethylene (HDPE)", "50–500 years"],
-        ["Thin-walled PVC / Genova", "40–70 years"],
-        ["Galvanized Steel", "40–70 years"],
-        ["Lead", "100+ years"],
-        ["Copper", "50+ years"],
-        ["Stainless Steel", "50+ years"],
-      ]
-        .map(
-          ([type, life]) =>
-            `<tr><td>${type}</td><td><strong>${life}</strong></td></tr>`,
-        )
-        .join("")}
+        ['Standard Dimensional Ratio (SDR)',     '50–500 years'],
+        ['Polyvinyl Chloride (PVC)',              '50–500 years'],
+        ['Acrylonitrile Butadiene Styrene (ABS)','50–500 years'],
+        ['Vitrified Clay / Terracotta',           '75–100 years'],
+        ['Cast Iron',                             '75–100 years'],
+        ['Concrete',                              '50–75 years'],
+        ['Transite / Asbestos Cement',            '40–60 years'],
+        ['Bituminous Fiber / Orangeburg',         '30–50 years'],
+        ['Cured in Place Pipe (CIPP)',            '40+ years'],
+        ['High Density Polyethylene (HDPE)',      '50–500 years'],
+        ['Thin-walled PVC / Genova',              '40–70 years'],
+        ['Galvanized Steel',                      '40–70 years'],
+        ['Lead',                                  '100+ years'],
+        ['Copper',                                '50+ years'],
+        ['Stainless Steel',                       '50+ years'],
+      ].map(([type, life]) => `<tr><td>${type}</td><td><strong>${life}</strong></td></tr>`).join('')}
     </tbody>
   </table>
 
   <p style="font-size:11px;color:#555;margin-top:16px;line-height:1.7;">
     <strong>*NOTE*</strong> Life expectancy is for material alone and under ideal circumstances as intended by the manufacturer.
     Construction and repair practices can have detrimental effects on how long a sewer line can perform as expected.
-    Additionally, soil erosion/settling and other environmental influences such as root intrusion can drastically reduce the
-    expected timelines outlined above.
+    Additionally, soil erosion/settling and other environmental influences such as root intrusion can drastically reduce the expected timelines outlined above.
   </p>
+  ${footer}
+</div>
+
+<!-- COMMON SEWER DEFECT GRAPHIC -->
+<div class="page">
+  ${header(date, ref)}
+  ${defectGraphicHtml}
 
   <div style="margin-top:32px;border-top:1px solid #ddd;padding-top:12px;text-align:center;font-size:10px;color:#888;">
-    Generated by Sewer Labz &nbsp;|&nbsp; ${report.location || ""} &nbsp;|&nbsp;
-    ${new Date().toLocaleDateString("en-US", { day: "2-digit", month: "long", year: "numeric" })}<br>
+    Generated by Sewer Labz &nbsp;|&nbsp; ${report.location || ''} &nbsp;|&nbsp;
+    ${new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'long', year: 'numeric' })}<br>
     <strong>This report is not to be used for the purposes of substitute disclosure.</strong>
   </div>
 </div>
 
 </body>
-</html>`;
+</html>`
 
-    // FIX: return is OUTSIDE the template literal (was inside in original — broken)
     return new NextResponse(html, {
-      headers: { "Content-Type": "text/html; charset=utf-8" },
-    });
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        // FIX: Prevent browser from showing "about:blank" in header/footer
+        'X-Frame-Options': 'SAMEORIGIN',
+      },
+    })
+
   } catch (error) {
-    console.error("PDF generation error:", error);
-    return NextResponse.json(
-      { error: "Failed to generate report" },
-      { status: 500 },
-    );
+    console.error('PDF generation error:', error)
+    return NextResponse.json({ error: 'Failed to generate report' }, { status: 500 })
   }
 }
