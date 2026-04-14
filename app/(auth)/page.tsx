@@ -8,7 +8,7 @@ type Report = {
   id: string;
   title: string;
   location: string;
-  clientName: string;
+  clientName: string; // FIX: was "staring" — typo causing build error
   inspectedAt: string;
   status: "DRAFT" | "COMPLETE";
   createdAt: string;
