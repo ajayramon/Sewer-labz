@@ -164,9 +164,12 @@ export default function DashboardPage() {
 
   // FIX: Edit button stores data then redirects to report builder
   const handleEdit = (report: Report) => {
-    const local = localStorage.getItem(`report_${report.id}`);
-    if (local) {
-      localStorage.setItem(`report_edit_${report.id}`, local);
+    // Try all possible localStorage key formats
+    const key1 = localStorage.getItem(`report_${report.id}`);
+    const key2 = localStorage.getItem(`report_edit_${report.id}`);
+    const data = key1 || key2;
+    if (data) {
+      localStorage.setItem(`report_edit_${report.id}`, data);
     } else {
       localStorage.setItem(
         `report_edit_${report.id}`,
