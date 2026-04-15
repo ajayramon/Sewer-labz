@@ -9,6 +9,7 @@ type Report = {
   title: string;
   location: string;
   clientName: string;
+  fileNumber: string;
   inspectedAt: string;
   status: "DRAFT" | "COMPLETE";
 };
@@ -19,57 +20,108 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"ALL" | "DRAFT" | "COMPLETE">("ALL");
+  const [generating, setGenerating] = useState<string | null>(null);
+  const [markingDone, setMarkingDone] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchReports();
+    loadReports();
   }, []);
 
-  const fetchReports = async () => {
+  const loadReports = async () => {
     try {
+      // Load from localStorage first
+      const local = localStorage.getItem("sewer_reports");
+      if (local) {
+        setReports(JSON.parse(local));
+        setLoading(false);
+      }
+      // Then try API
       const res = await fetch("/api/reports");
       const data = await res.json();
-      setReports(data.reports || []);
+      if (data.reports?.length) setReports(data.reports);
     } catch {
-      setReports([]);
     } finally {
       setLoading(false);
     }
   };
 
   const handlePDF = async (report: Report) => {
+    setGenerating(report.id);
     try {
-      const res = await fetch(`/api/reports/${report.id}`);
-      const data = await res.json();
-      const pdfRes = await fetch("/api/reports/pdf", {
+      const local = localStorage.getItem(`report_${report.id}`);
+      const data = local ? JSON.parse(local) : { report, defects: [] };
+      const res = await fetch("/api/reports/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-      const html = await pdfRes.text();
+      const html = await res.text();
       const win = window.open("", "_blank");
       if (win) {
+        win.document.open();
         win.document.write(html);
         win.document.close();
-        setTimeout(() => win.print(), 800);
+        win.onload = () => setTimeout(() => win.print(), 1000);
+        setTimeout(() => {
+          if (win && !win.closed) win.print();
+        }, 2500);
       }
     } catch {
       alert("Failed to generate PDF.");
+    } finally {
+      setGenerating(null);
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleEdit = (report: Report) => {
+    const local = localStorage.getItem(`report_${report.id}`);
+    localStorage.setItem(
+      `report_edit_${report.id}`,
+      local || JSON.stringify({ report, defects: [] }),
+    );
+    router.push(`/reports/new?edit=${report.id}`);
+  };
+
+  const handleToggleStatus = (report: Report) => {
+    setMarkingDone(report.id);
+    const newStatus = report.status === "COMPLETE" ? "DRAFT" : "COMPLETE";
+    const updated = reports.map((r) =>
+      r.id === report.id
+        ? { ...r, status: newStatus as "DRAFT" | "COMPLETE" }
+        : r,
+    );
+    setReports(updated);
+    localStorage.setItem("sewer_reports", JSON.stringify(updated));
+    const local = localStorage.getItem(`report_${report.id}`);
+    if (local) {
+      const d = JSON.parse(local);
+      d.report = { ...d.report, status: newStatus };
+      localStorage.setItem(`report_${report.id}`, JSON.stringify(d));
+    }
+    fetch(`/api/reports/${report.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ report: { ...report, status: newStatus } }),
+    }).catch(() => {});
+    setTimeout(() => setMarkingDone(null), 1000);
+  };
+
+  const handleDelete = (id: string) => {
     if (!confirm("Delete this report? This cannot be undone.")) return;
-    await fetch(`/api/reports/${id}`, { method: "DELETE" });
-    setReports((p) => p.filter((r) => r.id !== id));
+    const updated = reports.filter((r) => r.id !== id);
+    setReports(updated);
+    localStorage.setItem("sewer_reports", JSON.stringify(updated));
+    localStorage.removeItem(`report_${id}`);
+    fetch(`/api/reports/${id}`, { method: "DELETE" }).catch(() => {});
   };
 
   const filtered = reports.filter((r) => {
     const matchSearch =
       r.title?.toLowerCase().includes(search.toLowerCase()) ||
       r.clientName?.toLowerCase().includes(search.toLowerCase()) ||
-      r.location?.toLowerCase().includes(search.toLowerCase());
-    const matchFilter = filter === "ALL" || r.status === filter;
-    return matchSearch && matchFilter;
+      r.location?.toLowerCase().includes(search.toLowerCase()) ||
+      r.fileNumber?.toLowerCase().includes(search.toLowerCase());
+    return matchSearch && (filter === "ALL" || r.status === filter);
   });
 
   const inp: React.CSSProperties = {
@@ -82,6 +134,16 @@ export default function ReportsPage() {
     boxSizing: "border-box",
     background: "#F8FAFC",
   };
+  const btn = (bg: string, color: string): React.CSSProperties => ({
+    padding: "5px 10px",
+    borderRadius: "6px",
+    fontSize: "12px",
+    fontWeight: 600,
+    cursor: "pointer",
+    border: "none",
+    background: bg,
+    color,
+  });
 
   return (
     <div
@@ -92,7 +154,6 @@ export default function ReportsPage() {
         fontFamily: "Inter, Arial, sans-serif",
       }}
     >
-      {/* Header */}
       <div
         style={{
           display: "flex",
@@ -113,7 +174,9 @@ export default function ReportsPage() {
             Reports
           </h1>
           <p style={{ fontSize: "13px", color: "#94A3B8", marginTop: "4px" }}>
-            {reports.length} report{reports.length !== 1 ? "s" : ""} total
+            {reports.length} total ·{" "}
+            {reports.filter((r) => r.status === "DRAFT").length} drafts ·{" "}
+            {reports.filter((r) => r.status === "COMPLETE").length} complete
           </p>
         </div>
         <Link href="/reports/new">
@@ -134,11 +197,10 @@ export default function ReportsPage() {
         </Link>
       </div>
 
-      {/* Search + Filter */}
       <div style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
         <input
           type="text"
-          placeholder="Search reports..."
+          placeholder="Search by title, client, file #, location..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           style={{ ...inp, flex: 1 }}
@@ -164,7 +226,6 @@ export default function ReportsPage() {
         ))}
       </div>
 
-      {/* Table */}
       <div
         style={{
           background: "#fff",
@@ -225,16 +286,16 @@ export default function ReportsPage() {
               >
                 {[
                   "Report Title",
+                  "File #",
                   "Client",
-                  "Location",
-                  "Inspection Date",
+                  "Date",
                   "Status",
                   "Actions",
                 ].map((h) => (
                   <th
                     key={h}
                     style={{
-                      padding: "12px 16px",
+                      padding: "12px 14px",
                       textAlign: "left",
                       fontSize: "11px",
                       fontWeight: 700,
@@ -259,17 +320,26 @@ export default function ReportsPage() {
                 >
                   <td
                     style={{
-                      padding: "14px 16px",
+                      padding: "13px 14px",
                       fontSize: "13px",
                       fontWeight: 600,
                       color: "#0F2A4A",
                     }}
                   >
-                    {report.title || "Untitled Report"}
+                    {report.title || "Untitled"}
                   </td>
                   <td
                     style={{
-                      padding: "14px 16px",
+                      padding: "13px 14px",
+                      fontSize: "13px",
+                      color: "#64748B",
+                    }}
+                  >
+                    {report.fileNumber || "—"}
+                  </td>
+                  <td
+                    style={{
+                      padding: "13px 14px",
                       fontSize: "13px",
                       color: "#374151",
                     }}
@@ -278,23 +348,14 @@ export default function ReportsPage() {
                   </td>
                   <td
                     style={{
-                      padding: "14px 16px",
-                      fontSize: "13px",
-                      color: "#374151",
-                    }}
-                  >
-                    {report.location || "—"}
-                  </td>
-                  <td
-                    style={{
-                      padding: "14px 16px",
+                      padding: "13px 14px",
                       fontSize: "13px",
                       color: "#374151",
                     }}
                   >
                     {report.inspectedAt || "—"}
                   </td>
-                  <td style={{ padding: "14px 16px" }}>
+                  <td style={{ padding: "13px 14px" }}>
                     <span
                       style={{
                         padding: "4px 10px",
@@ -310,8 +371,10 @@ export default function ReportsPage() {
                       {report.status || "DRAFT"}
                     </span>
                   </td>
-                  <td style={{ padding: "14px 16px" }}>
-                    <div style={{ display: "flex", gap: "6px" }}>
+                  <td style={{ padding: "13px 14px" }}>
+                    <div
+                      style={{ display: "flex", gap: "5px", flexWrap: "wrap" }}
+                    >
                       <button
                         onClick={() => router.push(`/reports/${report.id}`)}
                         style={btn("#F1F5F9", "#0F2A4A")}
@@ -319,18 +382,32 @@ export default function ReportsPage() {
                         View
                       </button>
                       <button
-                        onClick={() =>
-                          router.push(`/reports/${report.id}/edit`)
-                        }
+                        onClick={() => handleEdit(report)}
                         style={btn("#EFF6FF", "#2563EB")}
                       >
                         Edit
                       </button>
                       <button
                         onClick={() => handlePDF(report)}
+                        disabled={generating === report.id}
                         style={btn("#F0FDF4", "#16A34A")}
                       >
-                        PDF
+                        {generating === report.id ? "..." : "PDF"}
+                      </button>
+                      {/* Mark Complete / Back to Draft */}
+                      <button
+                        onClick={() => handleToggleStatus(report)}
+                        disabled={markingDone === report.id}
+                        style={btn(
+                          report.status === "COMPLETE" ? "#FFFBEB" : "#E8F5EE",
+                          report.status === "COMPLETE" ? "#D97706" : "#16A34A",
+                        )}
+                      >
+                        {markingDone === report.id
+                          ? "✓"
+                          : report.status === "COMPLETE"
+                            ? "↩ Draft"
+                            : "✓ Complete"}
                       </button>
                       <button
                         onClick={() => handleDelete(report.id)}
@@ -346,17 +423,21 @@ export default function ReportsPage() {
           </table>
         )}
       </div>
+
+      {filtered.length > 0 && (
+        <div
+          style={{
+            marginTop: "10px",
+            fontSize: "12px",
+            color: "#94A3B8",
+            display: "flex",
+            gap: "16px",
+          }}
+        >
+          <span>✓ Complete — marks report as done</span>
+          <span>↩ Draft — moves back to draft</span>
+        </div>
+      )}
     </div>
   );
 }
-
-const btn = (bg: string, color: string): React.CSSProperties => ({
-  padding: "5px 12px",
-  borderRadius: "6px",
-  fontSize: "12px",
-  fontWeight: 600,
-  cursor: "pointer",
-  border: "none",
-  background: bg,
-  color,
-});
