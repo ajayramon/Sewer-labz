@@ -11,6 +11,7 @@ export default function SignupPage() {
   const [agreed, setAgreed] = useState(false);
   const [plan, setPlan] = useState("FREE");
   const [showTerms, setShowTerms] = useState(false);
+  const [loading, setLoading] = useState(false); // ✅ FIXED: added missing state
 
   const fullNameRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
@@ -731,20 +732,20 @@ export default function SignupPage() {
 
               <button
                 type="submit"
-                disabled={!agreed}
+                disabled={loading || !agreed}
                 style={{
                   width: "100%",
                   padding: "12px",
                   borderRadius: "8px",
                   border: "none",
-                  background: !agreed ? "#94A3B8" : "#2D8C4E",
+                  background: loading || !agreed ? "#94A3B8" : "#2D8C4E",
                   color: "#fff",
                   fontSize: "14px",
                   fontWeight: 700,
-                  cursor: !agreed ? "not-allowed" : "pointer",
+                  cursor: loading || !agreed ? "not-allowed" : "pointer",
                 }}
               >
-                Create Account
+                {loading ? "Creating Account..." : "Create Account"}
               </button>
             </div>
           )}
