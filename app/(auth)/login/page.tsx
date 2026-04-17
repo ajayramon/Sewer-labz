@@ -1,27 +1,50 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { auth } from "@/app/Lib/firebase";
 
 export default function LoginPage() {
   const router = useRouter();
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  // Use refs instead of useState — no re-render on every keystroke
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     const email = emailRef.current?.value || "";
     const password = passwordRef.current?.value || "";
 
     if (!email || !password) {
-      alert("Enter email and password");
+      setError("Enter email and password");
       return;
     }
 
-    localStorage.setItem("user", JSON.stringify({ email }));
-    router.push("/");
+    setLoading(true);
+    setError("");
+
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      router.push("/");
+    } catch (err: any) {
+      const code = err?.code || "";
+      if (
+        code === "auth/user-not-found" ||
+        code === "auth/wrong-password" ||
+        code === "auth/invalid-credential"
+      ) {
+        setError("INVALID EMAIL OR PASSWORD");
+      } else if (code === "auth/too-many-requests") {
+        setError("TOO MANY ATTEMPTS — TRY AGAIN LATER");
+      } else {
+        setError("LOGIN FAILED — PLEASE TRY AGAIN");
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -45,7 +68,6 @@ export default function LoginPage() {
           boxShadow: "0 4px 24px rgba(0,0,0,0.08)",
         }}
       >
-        {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: "8px" }}>
           <span
             style={{
@@ -69,6 +91,24 @@ export default function LoginPage() {
           Professional Sewer Inspection Reports
         </p>
 
+        {error && (
+          <div
+            style={{
+              background: "#FEF2F2",
+              border: "1px solid #FECACA",
+              borderRadius: "6px",
+              padding: "10px 14px",
+              fontSize: "12px",
+              color: "#DC2626",
+              marginBottom: "16px",
+              fontWeight: 700,
+              textTransform: "uppercase",
+            }}
+          >
+            {error}
+          </div>
+        )}
+
         <form onSubmit={handleLogin}>
           <div style={{ marginBottom: "14px" }}>
             <label style={lbl}>Email</label>
@@ -80,7 +120,6 @@ export default function LoginPage() {
               style={inp}
             />
           </div>
-
           <div style={{ marginBottom: "20px" }}>
             <label style={lbl}>Password</label>
             <input
@@ -94,19 +133,20 @@ export default function LoginPage() {
 
           <button
             type="submit"
+            disabled={loading}
             style={{
               width: "100%",
               padding: "12px",
               borderRadius: "8px",
-              background: "#2D8C4E",
+              background: loading ? "#94A3B8" : "#2D8C4E",
               color: "#fff",
               border: "none",
               fontSize: "14px",
               fontWeight: 700,
-              cursor: "pointer",
+              cursor: loading ? "not-allowed" : "pointer",
             }}
           >
-            Sign In
+            {loading ? "Signing In..." : "Sign In"}
           </button>
         </form>
 
@@ -140,7 +180,6 @@ export default function LoginPage() {
           </Link>
         </div>
 
-        {/* ALL CAPS Disclaimer */}
         <div
           style={{
             marginTop: "24px",
@@ -183,7 +222,6 @@ const lbl: React.CSSProperties = {
   textTransform: "uppercase",
   letterSpacing: "0.05em",
 };
-
 const inp: React.CSSProperties = {
   width: "100%",
   padding: "10px 12px",

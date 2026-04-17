@@ -69,39 +69,65 @@ export default function SignupPage() {
     setStep((p) => p + 1);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!agreed) {
       setError("YOU MUST AGREE TO THE TERMS AND CONDITIONS");
       return;
     }
+
     const email = emailRef.current?.value || "";
+    const password = passwordRef.current?.value || "";
     const fullName = fullNameRef.current?.value || "";
     const companyName = companyNameRef.current?.value || "";
-    localStorage.setItem(
-      "sewer_labz_user",
-      JSON.stringify({ email, fullName, companyName }),
-    );
-    router.push("/");
-    fetch("/api/auth/signup", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+
+    setError("");
+    setLoading(true);
+
+    try {
+      // 1. Create Firebase auth account
+      const { createUserWithEmailAndPassword, updateProfile } =
+        await import("firebase/auth");
+      const { auth, db } = await import("@/app/Lib/firebase");
+      const { doc, setDoc, serverTimestamp } =
+        await import("firebase/firestore");
+
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+
+      // 2. Set display name
+      await updateProfile(cred.user, { displayName: fullName });
+
+      // 3. Save profile to Firestore
+      await setDoc(doc(db, "users", cred.user.uid), {
         fullName,
         email,
-        password: passwordRef.current?.value,
         companyName,
-        inspectorTitle: inspectorTitleRef.current?.value,
-        licenseNumber: licenseRef.current?.value,
-        companyPhone: phoneRef.current?.value,
-        companyWebsite: websiteRef.current?.value,
-        companyAddress: addressRef.current?.value,
-        companyCity: cityRef.current?.value,
-        companyState: stateRef.current?.value,
-        companyZip: zipRef.current?.value,
+        inspectorTitle: inspectorTitleRef.current?.value || "",
+        licenseNumber: licenseRef.current?.value || "",
+        companyPhone: phoneRef.current?.value || "",
+        companyWebsite: websiteRef.current?.value || "",
+        companyAddress: addressRef.current?.value || "",
+        companyCity: cityRef.current?.value || "",
+        companyState: stateRef.current?.value || "",
+        companyZip: zipRef.current?.value || "",
         plan,
-      }),
-    }).catch(() => {});
+        createdAt: serverTimestamp(),
+      });
+
+      // 4. Redirect to dashboard
+      router.push("/");
+    } catch (err: any) {
+      const code = err?.code || "";
+      if (code === "auth/email-already-in-use") {
+        setError("AN ACCOUNT WITH THIS EMAIL ALREADY EXISTS");
+      } else if (code === "auth/weak-password") {
+        setError("PASSWORD IS TOO WEAK — MIN 6 CHARACTERS");
+      } else {
+        setError("SIGNUP FAILED — PLEASE TRY AGAIN");
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   const inp: React.CSSProperties = {
