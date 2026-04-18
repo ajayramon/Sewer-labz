@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { auth } from "@/app/Lib/firebase";
 
-// Pages that don't require auth
 const PUBLIC_PATHS = ["/login", "/signup", "/forget-password"];
 
 export default function AuthLayout({
@@ -15,27 +16,40 @@ export default function AuthLayout({
   const router = useRouter();
   const pathname = usePathname();
   const [checked, setChecked] = useState(false);
-  const [user, setUser] = useState<{ email: string } | null>(null);
+  const [user, setUser] = useState<{
+    email: string;
+    displayName?: string;
+  } | null>(null);
 
   useEffect(() => {
-    const stored = localStorage.getItem("user");
-    const isPublic = PUBLIC_PATHS.some((p) => pathname?.endsWith(p));
+    // Firebase real-time auth listener
+    const unsub = onAuthStateChanged(auth, (firebaseUser) => {
+      const isPublic = PUBLIC_PATHS.some((p) => pathname?.endsWith(p));
 
-    if (!stored && !isPublic) {
-      router.replace("/login");
-      return;
-    }
+      if (!firebaseUser && !isPublic) {
+        router.replace("/login");
+        return;
+      }
 
-    if (stored) setUser(JSON.parse(stored));
-    setChecked(true);
+      if (firebaseUser) {
+        setUser({
+          email: firebaseUser.email || "",
+          displayName: firebaseUser.displayName || "",
+        });
+      }
+
+      setChecked(true);
+    });
+
+    return () => unsub(); // cleanup listener on unmount
   }, [pathname]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("user");
+  const handleLogout = async () => {
+    await signOut(auth);
     router.replace("/login");
   };
 
-  // Don't render anything until auth check is done
+  // Still checking auth
   if (!checked) {
     return (
       <div
@@ -60,11 +74,11 @@ export default function AuthLayout({
     );
   }
 
-  // Public pages (login/signup) — no nav bar
+  // Public pages — no nav
   const isPublic = PUBLIC_PATHS.some((p) => pathname?.endsWith(p));
   if (isPublic) return <>{children}</>;
 
-  // Authenticated pages — show nav bar
+  // Protected pages — show nav
   return (
     <div
       style={{
@@ -73,7 +87,6 @@ export default function AuthLayout({
         fontFamily: "Inter, Arial, sans-serif",
       }}
     >
-      {/* ── Top Navigation Bar ── */}
       <nav
         style={{
           background: "#0F2A4A",
@@ -89,7 +102,6 @@ export default function AuthLayout({
           boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
         }}
       >
-        {/* Logo */}
         <Link href="/" style={{ textDecoration: "none" }}>
           <span
             style={{
@@ -103,7 +115,6 @@ export default function AuthLayout({
           </span>
         </Link>
 
-        {/* Nav links */}
         <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
           {[
             { href: "/", label: "📋 Dashboard" },
@@ -125,7 +136,6 @@ export default function AuthLayout({
                   textDecoration: "none",
                   background: active ? "#2D8C4E" : "transparent",
                   color: active ? "#fff" : "#CBD5E1",
-                  transition: "background 0.15s",
                 }}
               >
                 {label}
@@ -134,11 +144,10 @@ export default function AuthLayout({
           })}
         </div>
 
-        {/* User + logout */}
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           {user && (
             <span style={{ fontSize: "12px", color: "#94A3B8" }}>
-              {user.email}
+              {user.displayName || user.email}
             </span>
           )}
           <button
@@ -159,7 +168,6 @@ export default function AuthLayout({
         </div>
       </nav>
 
-      {/* ── Page Content ── */}
       <main>{children}</main>
     </div>
   );
