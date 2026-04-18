@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { adminDb } from "@/app/Lib/firebase-admin";
+import { getAdminDb } from "@/app/Lib/firebase-admin";
 
 export async function GET(req: NextRequest) {
   try {
     const uid = req.headers.get("x-user-id");
     if (!uid) return NextResponse.json({ reports: [] });
 
-    const snap = await adminDb
+    const snap = await getAdminDb()
       .collection("users")
       .doc(uid)
       .collection("reports")
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
       updatedAt: now,
     };
 
-    await adminDb
+    await getAdminDb()
       .collection("users")
       .doc(uid)
       .collection("reports")

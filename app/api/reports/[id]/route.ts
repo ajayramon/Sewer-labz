@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { adminDb } from "@/app/Lib/firebase-admin";
+import { getAdminDb } from "@/app/Lib/firebase-admin";
 
 export async function GET(
   req: NextRequest,
@@ -11,7 +11,7 @@ export async function GET(
     if (!uid)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const doc = await adminDb
+    const doc = await getAdminDb()
       .collection("users")
       .doc(uid)
       .collection("reports")
@@ -51,7 +51,7 @@ export async function PATCH(
       updatedAt: new Date().toISOString(),
     };
 
-    await adminDb
+    await getAdminDb()
       .collection("users")
       .doc(uid)
       .collection("reports")
@@ -78,7 +78,7 @@ export async function DELETE(
     if (!uid)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    await adminDb
+    await getAdminDb()
       .collection("users")
       .doc(uid)
       .collection("reports")
