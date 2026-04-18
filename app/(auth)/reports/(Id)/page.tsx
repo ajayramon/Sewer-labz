@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "@/app/Lib/firebase";
 
 export default function ViewReportPage() {
   const router = useRouter();
@@ -12,48 +14,95 @@ export default function ViewReportPage() {
   const [defects, setDefects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [uid, setUid] = useState<string | null>(null);
 
+  // Get Firebase UID
   useEffect(() => {
-    if (!id) return;
-    loadReport();
-  }, [id]);
+    const unsub = onAuthStateChanged(auth, (u) => {
+      if (u) setUid(u.uid);
+      else router.replace("/login");
+    });
+    return () => unsub();
+  }, []);
 
-  const loadReport = () => {
+  // Load report once we have UID
+  useEffect(() => {
+    if (!id || !uid) return;
+    loadReport(uid);
+  }, [id, uid]);
+
+  const loadReport = async (userId: string) => {
+    setLoading(true);
     try {
-      // Load from localStorage first
+      // Try Firestore first
+      const res = await fetch(`/api/reports/${id}`, {
+        headers: { "x-user-id": userId },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setReport(data.report || data);
+        setDefects(data.defects || []);
+        // Keep localStorage in sync
+        localStorage.setItem(`report_${id}`, JSON.stringify(data));
+      } else {
+        // Fall back to localStorage
+        const local = localStorage.getItem(`report_${id}`);
+        if (local) {
+          const data = JSON.parse(local);
+          setReport(data.report || data);
+          setDefects(data.defects || []);
+        }
+      }
+    } catch {
+      // Fall back to localStorage
       const local = localStorage.getItem(`report_${id}`);
       if (local) {
         const data = JSON.parse(local);
         setReport(data.report || data);
         setDefects(data.defects || []);
-        setLoading(false);
-        return;
       }
-      // Try API
-      fetch(`/api/reports/${id}`)
-        .then((r) => r.json())
-        .then((data) => {
-          setReport(data.report || data);
-          setDefects(data.defects || []);
-        })
-        .catch(() => {})
-        .finally(() => setLoading(false));
-    } catch {
+    } finally {
       setLoading(false);
     }
   };
 
-  const handleEdit = () => {
-    const local = localStorage.getItem(`report_${id}`);
-    if (local) localStorage.setItem(`report_edit_${id}`, local);
+  const handleEdit = async () => {
+    try {
+      const res = await fetch(`/api/reports/${id}`, {
+        headers: { "x-user-id": uid! },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        localStorage.setItem(`report_edit_${id}`, JSON.stringify(data));
+      } else {
+        const local = localStorage.getItem(`report_${id}`);
+        if (local) localStorage.setItem(`report_edit_${id}`, local);
+      }
+    } catch {
+      const local = localStorage.getItem(`report_${id}`);
+      if (local) localStorage.setItem(`report_edit_${id}`, local);
+    }
     router.push(`/reports/new?edit=${id}`);
   };
 
   const handlePDF = async () => {
     setGenerating(true);
     try {
-      const local = localStorage.getItem(`report_${id}`);
-      const data = local ? JSON.parse(local) : { report, defects };
+      // Try Firestore first, fall back to localStorage
+      let data: any = null;
+      try {
+        const res = await fetch(`/api/reports/${id}`, {
+          headers: { "x-user-id": uid! },
+        });
+        if (res.ok) data = await res.json();
+      } catch {}
+
+      if (!data) {
+        const local = localStorage.getItem(`report_${id}`);
+        data = local ? JSON.parse(local) : { report, defects };
+      }
+
       const res = await fetch("/api/reports/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -65,10 +114,7 @@ export default function ViewReportPage() {
         win.document.open();
         win.document.write(html);
         win.document.close();
-        win.onload = () => setTimeout(() => win.print(), 1000);
-        setTimeout(() => {
-          if (win && !win.closed) win.print();
-        }, 2500);
+        setTimeout(() => win.print(), 2500);
       }
     } catch {
       alert("Failed to generate PDF.");
@@ -164,13 +210,6 @@ export default function ViewReportPage() {
     color: "#0F2A4A",
     fontWeight: 500,
   };
-  const row = (label: string, value: any) =>
-    value ? (
-      <div key={label} style={{ marginBottom: "12px" }}>
-        <div style={lbl}>{label}</div>
-        <div style={val}>{value}</div>
-      </div>
-    ) : null;
 
   return (
     <div
@@ -196,7 +235,7 @@ export default function ViewReportPage() {
       >
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           <button
-            onClick={() => router.push("/")}
+            onClick={() => router.push("/reports")}
             style={{
               background: "none",
               border: "none",
@@ -205,7 +244,7 @@ export default function ViewReportPage() {
               fontSize: "14px",
             }}
           >
-            ← Dashboard
+            ← Reports
           </button>
           <span style={{ color: "#E2E8F0" }}>|</span>
           <span style={{ fontSize: "15px", fontWeight: 600, color: "#0F2A4A" }}>
@@ -308,7 +347,6 @@ export default function ViewReportPage() {
             )}
           </div>
 
-          {/* Property photos */}
           {report.propertyPhotos?.length > 0 && (
             <div style={{ marginTop: "16px" }}>
               <div style={lbl}>Property Photos</div>
@@ -354,7 +392,12 @@ export default function ViewReportPage() {
           >
             Sewer System Information
           </h3>
-          {row("Cleanout Location", report.cleanoutLocation)}
+          {report.cleanoutLocation && (
+            <div style={{ marginBottom: "12px" }}>
+              <div style={lbl}>Cleanout Location</div>
+              <div style={val}>{report.cleanoutLocation}</div>
+            </div>
+          )}
           {report.pipeMaterials?.length > 0 && (
             <div style={{ marginBottom: "12px" }}>
               <div style={lbl}>Pipe Materials</div>
@@ -387,9 +430,24 @@ export default function ViewReportPage() {
               </div>
             </div>
           )}
-          {row("1st Camera Direction", report.cameraDirection1)}
-          {row("2nd Camera Direction", report.cameraDirection2)}
-          {row("Piping Notes", report.pipingNotes)}
+          {report.cameraDirection1 && (
+            <div style={{ marginBottom: "12px" }}>
+              <div style={lbl}>1st Camera Direction</div>
+              <div style={val}>{report.cameraDirection1}</div>
+            </div>
+          )}
+          {report.cameraDirection2 && (
+            <div style={{ marginBottom: "12px" }}>
+              <div style={lbl}>2nd Camera Direction</div>
+              <div style={val}>{report.cameraDirection2}</div>
+            </div>
+          )}
+          {report.pipingNotes && (
+            <div style={{ marginBottom: "12px" }}>
+              <div style={lbl}>Piping Notes</div>
+              <div style={val}>{report.pipingNotes}</div>
+            </div>
+          )}
           {report.videoLinks?.filter((l: string) => l).length > 0 && (
             <div style={{ marginBottom: "12px" }}>
               <div style={lbl}>Video Links</div>
