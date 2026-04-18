@@ -1,39 +1,60 @@
 import { NextRequest, NextResponse } from "next/server";
+import { adminDb } from "@/app/Lib/firebase-admin";
 
-// In-memory store for demo (replace with Firebase/DB later)
-const reportsStore: any[] = [];
-
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    return NextResponse.json({ reports: reportsStore });
-  } catch {
+    const uid = req.headers.get("x-user-id");
+    if (!uid) return NextResponse.json({ reports: [] });
+
+    const snap = await adminDb
+      .collection("users")
+      .doc(uid)
+      .collection("reports")
+      .orderBy("updatedAt", "desc")
+      .get();
+
+    const reports = snap.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    return NextResponse.json({ reports });
+  } catch (err) {
+    console.error("GET /api/reports", err);
     return NextResponse.json({ reports: [] });
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
+    const uid = req.headers.get("x-user-id");
+    if (!uid)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
     const body = await req.json();
     const { report, defects } = body;
 
-    const newReport = {
+    const id = report.id || Date.now().toString();
+    const now = new Date().toISOString();
+
+    const data = {
       ...report,
-      id: report.id || Date.now().toString(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      id,
       defects: defects || [],
+      createdAt: report.createdAt || now,
+      updatedAt: now,
     };
 
-    // Add to store if not exists
-    const existing = reportsStore.findIndex((r) => r.id === newReport.id);
-    if (existing >= 0) {
-      reportsStore[existing] = newReport;
-    } else {
-      reportsStore.unshift(newReport);
-    }
+    await adminDb
+      .collection("users")
+      .doc(uid)
+      .collection("reports")
+      .doc(id)
+      .set(data, { merge: true });
 
-    return NextResponse.json(newReport, { status: 201 });
-  } catch {
+    return NextResponse.json(data, { status: 201 });
+  } catch (err) {
+    console.error("POST /api/reports", err);
     return NextResponse.json(
       { error: "Failed to save report" },
       { status: 500 },
