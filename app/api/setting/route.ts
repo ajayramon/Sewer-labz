@@ -1,15 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAdminDb } from "@/app/Lib/firebase-admin";
+
+export async function GET(req: NextRequest) {
+  try {
+    const uid = req.headers.get("x-user-id");
+    if (!uid) return NextResponse.json(null);
+
+    const doc = await getAdminDb()
+      .collection("users")
+      .doc(uid)
+      .get();
+
+    if (!doc.exists) return NextResponse.json(null);
+
+    return NextResponse.json(doc.data());
+  } catch (err) {
+    console.error("GET /api/settings", err);
+    return NextResponse.json(null);
+  }
+}
 
 export async function PATCH(req: NextRequest) {
   try {
+    const uid = req.headers.get("x-user-id");
+    if (!uid) return NextResponse.json({ success: false }, { status: 401 });
+
     const body = await req.json();
-    // Settings are saved in localStorage on the frontend
-    // Add your database logic here if needed in the future
-    return NextResponse.json({ success: true, data: body });
+
+    await getAdminDb()
+      .collection("users")
+      .doc(uid)
+      .set(body, { merge: true });
+
+    return NextResponse.json({ success: true });
   } catch (err) {
-    return NextResponse.json(
-      { success: false, error: "Failed to save settings" },
-      { status: 500 },
-    );
+    console.error("PATCH /api/settings", err);
+    return NextResponse.json({ success: false, error: "Failed to save" }, { status: 500 });
   }
 }
