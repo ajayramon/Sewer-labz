@@ -1,5 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "@/app/Lib/firebase";
 
 type DefectImage = { id: string; url: string; name: string };
 type Defect = {
@@ -64,7 +67,6 @@ const peopleOptions = [
   "Contractor",
   "Other",
 ];
-
 const weatherOptions = [
   "Sunny",
   "Cloudy",
@@ -76,7 +78,6 @@ const weatherOptions = [
   "Mild",
   "Cold",
 ];
-
 const tempOptions = [
   "60-70°F",
   "70-80°F",
@@ -86,7 +87,6 @@ const tempOptions = [
   "Below 60°F",
   "Above 110°F",
 ];
-
 const soilOptions = [
   "Dry at the surface",
   "Moist at the surface",
@@ -151,9 +151,16 @@ const severityConfig: Record<string, { bg: string; color: string }> = {
 };
 
 export default function ReportBuilder() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("edit");
+
+  const [uid, setUid] = useState<string | null>(null);
   const [title, setTitle] = useState("New Inspection Report");
   const [editingTitle, setEditingTitle] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [savedMsg, setSavedMsg] = useState("");
   const [activeTab, setActiveTab] = useState<
     "details" | "system" | "conditions" | "recommendations"
   >("details");
@@ -186,124 +193,121 @@ export default function ReportBuilder() {
     Object.fromEntries(correctiveActions.map((a) => [a.label, "N/A"])),
   );
   const [correctionNotes, setCorrectionNotes] = useState("");
-
   const [propertyPhotos, setPropertyPhotos] = useState<string[]>([]);
   const [defects, setDefects] = useState<Defect[]>([]);
   const [dragOver, setDragOver] = useState<string | null>(null);
 
-  const updateDetail = (k: string, v: string) =>
-    setDetails((p) => ({ ...p, [k]: v }));
+  // Get Firebase UID
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      if (u) setUid(u.uid);
+      else router.replace("/login");
+    });
+    return () => unsub();
+  }, []);
 
-  const togglePerson = (person: string) => {
-    setDetails((p) => ({
-      ...p,
-      peoplePresent: p.peoplePresent.includes(person)
-        ? p.peoplePresent.filter((x) => x !== person)
-        : [...p.peoplePresent, person],
-    }));
+  // Load existing report if editing
+  useEffect(() => {
+    if (!editId || !uid) return;
+    const loadEdit = async () => {
+      try {
+        // Try Firestore first
+        const res = await fetch(`/api/reports/${editId}`, {
+          headers: { "x-user-id": uid },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.title) setTitle(data.title);
+          if (data.report) setDetails((p) => ({ ...p, ...data.report }));
+          if (data.defects) setDefects(data.defects);
+          if (data.report?.corrections) setCorrections(data.report.corrections);
+          if (data.report?.correctionNotes)
+            setCorrectionNotes(data.report.correctionNotes);
+          if (data.report?.propertyPhotos)
+            setPropertyPhotos(data.report.propertyPhotos);
+          return;
+        }
+      } catch {}
+      // Fall back to localStorage
+      const local = localStorage.getItem(`report_edit_${editId}`);
+      if (local) {
+        const data = JSON.parse(local);
+        if (data.title) setTitle(data.title);
+        if (data.report) setDetails((p) => ({ ...p, ...data.report }));
+        if (data.defects) setDefects(data.defects);
+      }
+    };
+    loadEdit();
+  }, [editId, uid]);
+
+  const buildPayload = () => {
+    const id = editId || Date.now().toString();
+    const report = {
+      ...details,
+      id,
+      title,
+      status: "DRAFT",
+      propertyPhotos,
+      corrections,
+      correctionNotes,
+      inspectionTime: `${details.inspectionTimeH || "--"}:${details.inspectionTimeM || "--"} ${details.inspectionTimeAmPm}`,
+      weather: [
+        details.weatherCondition,
+        details.weatherTemp,
+        details.weatherSoil,
+      ]
+        .filter(Boolean)
+        .join(", "),
+      videoLinks: details.videoLinks.filter((l) => l.trim() !== ""),
+    };
+    return { report, defects };
   };
 
-  const toggleMaterial = (material: string) => {
-    setDetails((p) => ({
-      ...p,
-      pipeMaterials: p.pipeMaterials.includes(material)
-        ? p.pipeMaterials.filter((m) => m !== material)
-        : [...p.pipeMaterials, material],
-    }));
-  };
-
-  const updateVideoLink = (index: number, value: string) => {
-    const links = [...details.videoLinks];
-    links[index] = value;
-    setDetails((p) => ({ ...p, videoLinks: links }));
-  };
-
-  const addDefect = () => {
-    setDefects((p) => [
-      ...p,
-      {
-        id: Date.now().toString(),
-        videoTimeH: "",
-        videoTimeM: "",
-        footageStart: "",
-        footageEnd: "",
-        conditionType: "Select Condition Type",
-        severity: "Minor",
-        narrative: "",
-        images: [],
-        expanded: true,
-      },
-    ]);
-    setActiveTab("conditions");
-  };
-
-  const updateDefect = (id: string, k: string, v: string) =>
-    setDefects((p) => p.map((d) => (d.id === id ? { ...d, [k]: v } : d)));
-
-  const toggleExpand = (id: string) =>
-    setDefects((p) =>
-      p.map((d) => (d.id === id ? { ...d, expanded: !d.expanded } : d)),
-    );
-
-  const deleteDefect = (id: string) =>
-    setDefects((p) => p.filter((d) => d.id !== id));
-
-  const handleImageUpload = (defectId: string, files: FileList | null) => {
-    if (!files) return;
-    const defect = defects.find((d) => d.id === defectId);
-    if (!defect) return;
-    const remaining = 6 - defect.images.length;
-    const toAdd = Array.from(files).slice(0, remaining);
-    toAdd.forEach((f) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const url = e.target?.result as string;
-        setDefects((p) =>
-          p.map((d) =>
-            d.id === defectId
-              ? {
-                  ...d,
-                  images: [
-                    ...d.images,
-                    {
-                      id: Date.now().toString() + Math.random(),
-                      url,
-                      name: f.name,
-                    },
-                  ],
-                }
-              : d,
-          ),
+  const handleSaveDraft = async () => {
+    if (!uid) return;
+    setSaving(true);
+    try {
+      const payload = buildPayload();
+      const res = await fetch("/api/reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-user-id": uid },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        // Keep localStorage in sync
+        localStorage.setItem(`report_${saved.id}`, JSON.stringify(payload));
+        const existing = JSON.parse(
+          localStorage.getItem("sewer_reports") || "[]",
         );
-      };
-      reader.readAsDataURL(f);
-    });
-  };
-
-  const removeImage = (defectId: string, imageId: string) =>
-    setDefects((p) =>
-      p.map((d) =>
-        d.id === defectId
-          ? { ...d, images: d.images.filter((i) => i.id !== imageId) }
-          : d,
-      ),
-    );
-
-  const handlePropertyPhotos = (files: FileList | null) => {
-    if (!files) return;
-    const remaining = 3 - propertyPhotos.length;
-    const toAdd = Array.from(files).slice(0, remaining);
-    toAdd.forEach((f) => {
-      const reader = new FileReader();
-      reader.onload = (e) =>
-        setPropertyPhotos((p) => [...p, e.target?.result as string]);
-      reader.readAsDataURL(f);
-    });
+        const updated = [
+          payload.report,
+          ...existing.filter((r: any) => r.id !== saved.id),
+        ];
+        localStorage.setItem("sewer_reports", JSON.stringify(updated));
+        setSavedMsg("✓ Saved");
+        setTimeout(() => setSavedMsg(""), 2500);
+      }
+    } catch {
+      setSavedMsg("Save failed");
+      setTimeout(() => setSavedMsg(""), 2500);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleGeneratePDF = async () => {
     setGenerating(true);
     try {
+      const payload = buildPayload();
+      // Auto-save before generating
+      if (uid) {
+        await fetch("/api/reports", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-user-id": uid },
+          body: JSON.stringify(payload),
+        });
+      }
       const res = await fetch("/api/reports/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -342,6 +346,110 @@ export default function ReportBuilder() {
     }
   };
 
+  const updateDetail = (k: string, v: string) =>
+    setDetails((p) => ({ ...p, [k]: v }));
+  const togglePerson = (person: string) =>
+    setDetails((p) => ({
+      ...p,
+      peoplePresent: p.peoplePresent.includes(person)
+        ? p.peoplePresent.filter((x) => x !== person)
+        : [...p.peoplePresent, person],
+    }));
+  const toggleMaterial = (material: string) =>
+    setDetails((p) => ({
+      ...p,
+      pipeMaterials: p.pipeMaterials.includes(material)
+        ? p.pipeMaterials.filter((m) => m !== material)
+        : [...p.pipeMaterials, material],
+    }));
+  const updateVideoLink = (index: number, value: string) => {
+    const links = [...details.videoLinks];
+    links[index] = value;
+    setDetails((p) => ({ ...p, videoLinks: links }));
+  };
+
+  const addDefect = () => {
+    setDefects((p) => [
+      ...p,
+      {
+        id: Date.now().toString(),
+        videoTimeH: "",
+        videoTimeM: "",
+        footageStart: "",
+        footageEnd: "",
+        conditionType: "Select Condition Type",
+        severity: "Minor",
+        narrative: "",
+        images: [],
+        expanded: true,
+      },
+    ]);
+    setActiveTab("conditions");
+  };
+  const updateDefect = (id: string, k: string, v: string) =>
+    setDefects((p) => p.map((d) => (d.id === id ? { ...d, [k]: v } : d)));
+  const toggleExpand = (id: string) =>
+    setDefects((p) =>
+      p.map((d) => (d.id === id ? { ...d, expanded: !d.expanded } : d)),
+    );
+  const deleteDefect = (id: string) =>
+    setDefects((p) => p.filter((d) => d.id !== id));
+
+  const handleImageUpload = (defectId: string, files: FileList | null) => {
+    if (!files) return;
+    const defect = defects.find((d) => d.id === defectId);
+    if (!defect) return;
+    const remaining = 6 - defect.images.length;
+    Array.from(files)
+      .slice(0, remaining)
+      .forEach((f) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const url = e.target?.result as string;
+          setDefects((p) =>
+            p.map((d) =>
+              d.id === defectId
+                ? {
+                    ...d,
+                    images: [
+                      ...d.images,
+                      {
+                        id: Date.now().toString() + Math.random(),
+                        url,
+                        name: f.name,
+                      },
+                    ],
+                  }
+                : d,
+            ),
+          );
+        };
+        reader.readAsDataURL(f);
+      });
+  };
+
+  const removeImage = (defectId: string, imageId: string) =>
+    setDefects((p) =>
+      p.map((d) =>
+        d.id === defectId
+          ? { ...d, images: d.images.filter((i) => i.id !== imageId) }
+          : d,
+      ),
+    );
+
+  const handlePropertyPhotos = (files: FileList | null) => {
+    if (!files) return;
+    const remaining = 3 - propertyPhotos.length;
+    Array.from(files)
+      .slice(0, remaining)
+      .forEach((f) => {
+        const reader = new FileReader();
+        reader.onload = (e) =>
+          setPropertyPhotos((p) => [...p, e.target?.result as string]);
+        reader.readAsDataURL(f);
+      });
+  };
+
   const inp = {
     height: "36px",
     borderRadius: "6px",
@@ -353,7 +461,6 @@ export default function ReportBuilder() {
     boxSizing: "border-box" as const,
     background: "#F8FAFC",
   };
-
   const lbl = {
     display: "block",
     fontSize: "11px",
@@ -363,7 +470,6 @@ export default function ReportBuilder() {
     textTransform: "uppercase" as const,
     letterSpacing: "0.05em",
   };
-
   const tab = (active: boolean) => ({
     padding: "8px 14px",
     borderRadius: "6px",
@@ -374,7 +480,6 @@ export default function ReportBuilder() {
     color: active ? "#fff" : "#64748B",
     border: "none",
   });
-
   const card = {
     background: "#fff",
     border: "1px solid #E2E8F0",
@@ -453,7 +558,7 @@ export default function ReportBuilder() {
       >
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           <a
-            href="/"
+            href="/reports"
             style={{
               color: "#64748B",
               textDecoration: "none",
@@ -502,22 +607,47 @@ export default function ReportBuilder() {
             DRAFT
           </span>
         </div>
-        <button
-          onClick={handleGeneratePDF}
-          disabled={generating}
-          style={{
-            background: generating ? "#94A3B8" : "#2D8C4E",
-            color: "#fff",
-            border: "none",
-            borderRadius: "8px",
-            padding: "8px 18px",
-            fontSize: "13px",
-            fontWeight: 600,
-            cursor: generating ? "not-allowed" : "pointer",
-          }}
-        >
-          {generating ? "Generating..." : "Generate PDF"}
-        </button>
+        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+          {savedMsg && (
+            <span
+              style={{ fontSize: "13px", color: "#16A34A", fontWeight: 600 }}
+            >
+              {savedMsg}
+            </span>
+          )}
+          <button
+            onClick={handleSaveDraft}
+            disabled={saving}
+            style={{
+              background: saving ? "#94A3B8" : "#0F2A4A",
+              color: "#fff",
+              border: "none",
+              borderRadius: "8px",
+              padding: "8px 18px",
+              fontSize: "13px",
+              fontWeight: 600,
+              cursor: saving ? "not-allowed" : "pointer",
+            }}
+          >
+            {saving ? "Saving..." : "💾 Save Draft"}
+          </button>
+          <button
+            onClick={handleGeneratePDF}
+            disabled={generating}
+            style={{
+              background: generating ? "#94A3B8" : "#2D8C4E",
+              color: "#fff",
+              border: "none",
+              borderRadius: "8px",
+              padding: "8px 18px",
+              fontSize: "13px",
+              fontWeight: 600,
+              cursor: generating ? "not-allowed" : "pointer",
+            }}
+          >
+            {generating ? "Generating..." : "Generate PDF"}
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -617,7 +747,6 @@ export default function ReportBuilder() {
                     />
                   </div>
                 ))}
-
                 <div
                   style={{
                     display: "grid",
@@ -646,7 +775,6 @@ export default function ReportBuilder() {
                     />
                   </div>
                 </div>
-
                 <div style={{ marginBottom: "12px" }}>
                   <label style={lbl}>Building Occupied</label>
                   <select
@@ -661,7 +789,6 @@ export default function ReportBuilder() {
                     <option>Unknown</option>
                   </select>
                 </div>
-
                 <div style={{ marginBottom: "12px" }}>
                   <label style={lbl}>People Present</label>
                   <div
@@ -691,20 +818,8 @@ export default function ReportBuilder() {
                       </button>
                     ))}
                   </div>
-                  {details.peoplePresent.length > 0 && (
-                    <div
-                      style={{
-                        marginTop: "8px",
-                        fontSize: "12px",
-                        color: "#64748B",
-                      }}
-                    >
-                      Selected: {details.peoplePresent.join(", ")}
-                    </div>
-                  )}
                 </div>
-
-                <div style={{ marginBottom: "4px" }}>
+                <div>
                   <label style={lbl}>Weather / Soil Conditions</label>
                   <div
                     style={{
@@ -727,9 +842,7 @@ export default function ReportBuilder() {
                       >
                         <option value="">Select...</option>
                         {weatherOptions.map((w) => (
-                          <option key={w} value={w}>
-                            {w}
-                          </option>
+                          <option key={w}>{w}</option>
                         ))}
                       </select>
                     </div>
@@ -746,32 +859,23 @@ export default function ReportBuilder() {
                       >
                         <option value="">Select...</option>
                         {tempOptions.map((t) => (
-                          <option key={t} value={t}>
-                            {t}
-                          </option>
+                          <option key={t}>{t}</option>
                         ))}
                       </select>
                     </div>
                   </div>
-                  <div>
-                    <label style={{ ...lbl, fontSize: "10px" }}>
-                      Soil Condition
-                    </label>
-                    <select
-                      value={details.weatherSoil}
-                      onChange={(e) =>
-                        updateDetail("weatherSoil", e.target.value)
-                      }
-                      style={{ ...inp, width: "100%" }}
-                    >
-                      <option value="">Select...</option>
-                      {soilOptions.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <select
+                    value={details.weatherSoil}
+                    onChange={(e) =>
+                      updateDetail("weatherSoil", e.target.value)
+                    }
+                    style={{ ...inp, width: "100%" }}
+                  >
+                    <option value="">Soil condition...</option>
+                    {soilOptions.map((s) => (
+                      <option key={s}>{s}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
             </div>
@@ -898,7 +1002,6 @@ export default function ReportBuilder() {
                   </div>
                 )}
               </div>
-
               <div style={card}>
                 <h3
                   style={{
@@ -950,7 +1053,6 @@ export default function ReportBuilder() {
                 >
                   Sewer System Details
                 </h3>
-
                 <div style={{ marginBottom: "14px" }}>
                   <label style={lbl}>Cleanout Location</label>
                   <textarea
@@ -970,7 +1072,6 @@ export default function ReportBuilder() {
                     }}
                   />
                 </div>
-
                 <div style={{ marginBottom: "14px" }}>
                   <label style={lbl}>Sewer Video Links (up to 4)</label>
                   {[0, 1, 2, 3].map((i) => (
@@ -1003,19 +1104,7 @@ export default function ReportBuilder() {
                     </div>
                   ))}
                 </div>
-
-                <div style={{ marginBottom: "14px" }}>
-                  <label style={lbl}>Camera Entry / Cleanout Type</label>
-                  <input
-                    type="text"
-                    value={details.fileNumber}
-                    onChange={(e) => updateDetail("fileNumber", e.target.value)}
-                    placeholder='e.g. 4" Cast Iron'
-                    style={{ ...inp, width: "100%" }}
-                  />
-                </div>
               </div>
-
               <div style={card}>
                 <h3
                   style={{
@@ -1027,15 +1116,6 @@ export default function ReportBuilder() {
                 >
                   Piping Section
                 </h3>
-                <p
-                  style={{
-                    fontSize: "12px",
-                    color: "#64748B",
-                    marginBottom: "12px",
-                  }}
-                >
-                  Describe the camera directions during inspection
-                </p>
                 <div style={{ marginBottom: "12px" }}>
                   <label style={lbl}>1st Direction</label>
                   <input
@@ -1081,7 +1161,6 @@ export default function ReportBuilder() {
                 </div>
               </div>
             </div>
-
             <div style={card}>
               <h3
                 style={{
@@ -1256,8 +1335,6 @@ export default function ReportBuilder() {
                   >
                     #{index + 1}
                   </span>
-
-                  {/* Time box */}
                   <div
                     style={{
                       display: "flex",
@@ -1312,8 +1389,6 @@ export default function ReportBuilder() {
                       }}
                     />
                   </div>
-
-                  {/* Footage */}
                   <div
                     style={{
                       display: "flex",
@@ -1333,7 +1408,6 @@ export default function ReportBuilder() {
                       ft
                     </span>
                   </div>
-
                   <select
                     value={defect.conditionType}
                     onChange={(e) =>
@@ -1342,13 +1416,9 @@ export default function ReportBuilder() {
                     style={{ ...inp, flex: 1, minWidth: "180px" }}
                   >
                     {conditionTypes.map((ct) => (
-                      <option key={ct} value={ct}>
-                        {ct}
-                      </option>
+                      <option key={ct}>{ct}</option>
                     ))}
                   </select>
-
-                  {/* Severity with colors */}
                   <select
                     value={defect.severity}
                     onChange={(e) =>
@@ -1366,12 +1436,9 @@ export default function ReportBuilder() {
                     }}
                   >
                     {Object.keys(severityConfig).map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
+                      <option key={s}>{s}</option>
                     ))}
                   </select>
-
                   <button
                     onClick={() => toggleExpand(defect.id)}
                     style={{
@@ -1407,7 +1474,7 @@ export default function ReportBuilder() {
                         onChange={(e) =>
                           updateDefect(defect.id, "narrative", e.target.value)
                         }
-                        placeholder="e.g. Root intrusion; unable to determine where roots are originating. Cable or hydro jet to cut."
+                        placeholder="e.g. Root intrusion; unable to determine where roots are originating."
                         rows={3}
                         style={{
                           ...inp,
@@ -1419,7 +1486,6 @@ export default function ReportBuilder() {
                         }}
                       />
                     </div>
-
                     <label style={lbl}>Photos ({defect.images.length}/6)</label>
                     <div
                       onDragOver={(e) => {
@@ -1466,7 +1532,6 @@ export default function ReportBuilder() {
                           : "Drag & drop or click to upload"}
                       </div>
                     </div>
-
                     {defect.images.length > 0 && (
                       <div
                         style={{
@@ -1558,7 +1623,7 @@ export default function ReportBuilder() {
           </div>
         )}
 
-        {/* TAB 4 — End of Report / Recommendations */}
+        {/* TAB 4 — End of Report */}
         {activeTab === "recommendations" && (
           <div>
             <div style={card}>
@@ -1581,7 +1646,6 @@ export default function ReportBuilder() {
               >
                 Select recommended corrective actions for each category
               </p>
-
               {correctiveActions.map((action) => (
                 <div key={action.label} style={{ marginBottom: "16px" }}>
                   <label style={lbl}>{action.label}</label>
@@ -1618,13 +1682,12 @@ export default function ReportBuilder() {
                   </div>
                 </div>
               ))}
-
               <div style={{ marginTop: "16px" }}>
                 <label style={lbl}>Additional Recommendations / Notes</label>
                 <textarea
                   value={correctionNotes}
                   onChange={(e) => setCorrectionNotes(e.target.value)}
-                  placeholder="e.g. Hydro jet/blade cutting recommended to remove roots. Cast iron line needs to be replaced or lined..."
+                  placeholder="e.g. Hydro jet/blade cutting recommended..."
                   rows={6}
                   style={{
                     ...inp,
@@ -1637,7 +1700,6 @@ export default function ReportBuilder() {
                 />
               </div>
             </div>
-
             <div style={card}>
               <h3
                 style={{
