@@ -3,12 +3,14 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { auth } from "@/app/Lib/firebase";
 
 type Report = {
   id: string;
   title: string;
   location: string;
-  clientName: string; // FIX: was "staring" — typo causing build error
+  clientName: string;
   inspectedAt: string;
   status: "DRAFT" | "COMPLETE";
   createdAt: string;
@@ -39,23 +41,21 @@ type Settings = {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const [uid, setUid] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<
     "reports" | "templates" | "settings"
   >("reports");
 
-  // Reports state
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
-  // Templates state
   const [templates, setTemplates] = useState<Template[]>([]);
   const [editingTemplate, setEditingTemplate] =
     useState<Partial<Template> | null>(null);
   const [isNewTemplate, setIsNewTemplate] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
 
-  // Settings state
   const [settings, setSettings] = useState<Settings>({
     fullName: "",
     email: "",
@@ -65,37 +65,71 @@ export default function DashboardPage() {
     companyWebsite: "",
     licenseNumber: "",
   });
-  const [settingsSaved, setSettingsSaved] = useState(false);
+  const [settingsSaved, setSavedMsg] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsTab, setSettingsTab] = useState<
     "account" | "company" | "subscription"
   >("account");
 
+  // Get Firebase UID
   useEffect(() => {
-    loadReports();
-    loadTemplates();
-    loadSettings();
+    const unsub = onAuthStateChanged(auth, (u) => {
+      if (!u) {
+        router.replace("/login");
+        return;
+      }
+      setUid(u.uid);
+      setSettings((p) => ({
+        ...p,
+        email: u.email || "",
+        fullName: u.displayName || "",
+      }));
+    });
+    return () => unsub();
   }, []);
 
-  // FIX: Load reports from localStorage first, then try API
-  const loadReports = async () => {
+  // Load all data once UID is available
+  useEffect(() => {
+    if (!uid) return;
+    loadReports(uid);
+    loadSettings(uid);
+    loadTemplates();
+  }, [uid]);
+
+  const loadReports = async (userId: string) => {
+    setLoading(true);
     try {
-      // Load from localStorage first (immediate)
+      // Show localStorage instantly
       const local = localStorage.getItem("sewer_reports");
-      if (local) {
-        const localReports = JSON.parse(local);
-        setReports(localReports);
-        setLoading(false);
-      }
-      // Then try API
-      const res = await fetch("/api/dashboard");
+      if (local) setReports(JSON.parse(local));
+
+      // Then load from Firestore
+      const res = await fetch("/api/reports", {
+        headers: { "x-user-id": userId },
+      });
       const data = await res.json();
       if (data.reports?.length) {
         setReports(data.reports);
+        localStorage.setItem("sewer_reports", JSON.stringify(data.reports));
       }
     } catch {
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadSettings = async (userId: string) => {
+    try {
+      const res = await fetch("/api/settings", {
+        headers: { "x-user-id": userId },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data) setSettings((p) => ({ ...p, ...data }));
+      }
+    } catch {
+      const local = localStorage.getItem("sewer_settings");
+      if (local) setSettings((p) => ({ ...p, ...JSON.parse(local) }));
     }
   };
 
@@ -106,32 +140,20 @@ export default function DashboardPage() {
     } catch {}
   };
 
-  const loadSettings = () => {
-    try {
-      const saved = localStorage.getItem("sewer_settings");
-      if (saved) {
-        setSettings(JSON.parse(saved));
-        return;
-      }
-      const user = localStorage.getItem("user");
-      if (user) {
-        const u = JSON.parse(user);
-        setSettings((p) => ({
-          ...p,
-          email: u.email || "",
-          fullName: u.fullName || "",
-          companyName: u.companyName || "",
-        }));
-      }
-    } catch {}
-  };
-
   // ── Reports ──────────────────────────────────────────────────
-  // FIX: PDF loads from localStorage
   const handlePDF = async (report: Report) => {
     try {
-      const local = localStorage.getItem(`report_${report.id}`);
-      let data = local ? JSON.parse(local) : { report, defects: [] };
+      let data: any = null;
+      try {
+        const res = await fetch(`/api/reports/${report.id}`, {
+          headers: { "x-user-id": uid! },
+        });
+        if (res.ok) data = await res.json();
+      } catch {}
+      if (!data) {
+        const local = localStorage.getItem(`report_${report.id}`);
+        data = local ? JSON.parse(local) : { report, defects: [] };
+      }
       const pdfRes = await fetch("/api/reports/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -143,10 +165,7 @@ export default function DashboardPage() {
         win.document.open();
         win.document.write(html);
         win.document.close();
-        win.onload = () => setTimeout(() => win.print(), 1000);
-        setTimeout(() => {
-          if (win && !win.closed) win.print();
-        }, 2500);
+        setTimeout(() => win.print(), 2500);
       }
     } catch {
       alert("Failed to generate PDF.");
@@ -155,25 +174,30 @@ export default function DashboardPage() {
 
   const handleDeleteReport = async (id: string) => {
     if (!confirm("Delete this report?")) return;
-    await fetch(`/api/reports/${id}`, { method: "DELETE" }).catch(() => {});
+    await fetch(`/api/reports/${id}`, {
+      method: "DELETE",
+      headers: { "x-user-id": uid! },
+    }).catch(() => {});
     const updated = reports.filter((r) => r.id !== id);
     setReports(updated);
     localStorage.setItem("sewer_reports", JSON.stringify(updated));
     localStorage.removeItem(`report_${id}`);
   };
 
-  // FIX: Edit button stores data then redirects to report builder
-  const handleEdit = (report: Report) => {
-    // Try all possible localStorage key formats
-    const key1 = localStorage.getItem(`report_${report.id}`);
-    const key2 = localStorage.getItem(`report_edit_${report.id}`);
-    const data = key1 || key2;
-    if (data) {
-      localStorage.setItem(`report_edit_${report.id}`, data);
-    } else {
+  const handleEdit = async (report: Report) => {
+    try {
+      const res = await fetch(`/api/reports/${report.id}`, {
+        headers: { "x-user-id": uid! },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        localStorage.setItem(`report_edit_${report.id}`, JSON.stringify(data));
+      }
+    } catch {
+      const local = localStorage.getItem(`report_${report.id}`);
       localStorage.setItem(
         `report_edit_${report.id}`,
-        JSON.stringify({ report, defects: [] }),
+        local || JSON.stringify({ report, defects: [] }),
       );
     }
     router.push(`/reports/new?edit=${report.id}`);
@@ -190,7 +214,7 @@ export default function DashboardPage() {
       showSuggestedMaintenance: true,
       customDropdowns: [],
       statementOfService:
-        "Sewer Labz is a professional sewer inspection company. All inspections are performed in accordance with industry standards using professional-grade CCTV camera equipment.",
+        "Sewer Labz is a professional sewer inspection company.",
     });
     setIsNewTemplate(true);
   };
@@ -232,7 +256,6 @@ export default function DashboardPage() {
     reader.readAsDataURL(file);
   };
 
-  // Add/remove custom dropdown options
   const addCustomDropdown = () => {
     const current = editingTemplate?.customDropdowns || [];
     setEditingTemplate((p) =>
@@ -241,19 +264,16 @@ export default function DashboardPage() {
         : p,
     );
   };
-
   const updateDropdownLabel = (i: number, val: string) => {
     const arr = [...(editingTemplate?.customDropdowns || [])];
     arr[i] = { ...arr[i], label: val };
     setEditingTemplate((p) => (p ? { ...p, customDropdowns: arr } : p));
   };
-
   const addDropdownOption = (i: number) => {
     const arr = [...(editingTemplate?.customDropdowns || [])];
     arr[i] = { ...arr[i], options: [...arr[i].options, ""] };
     setEditingTemplate((p) => (p ? { ...p, customDropdowns: arr } : p));
   };
-
   const updateDropdownOption = (di: number, oi: number, val: string) => {
     const arr = [...(editingTemplate?.customDropdowns || [])];
     const opts = [...arr[di].options];
@@ -261,7 +281,6 @@ export default function DashboardPage() {
     arr[di] = { ...arr[di], options: opts };
     setEditingTemplate((p) => (p ? { ...p, customDropdowns: arr } : p));
   };
-
   const removeDropdown = (i: number) => {
     setEditingTemplate((p) =>
       p
@@ -277,22 +296,26 @@ export default function DashboardPage() {
 
   // ── Settings ─────────────────────────────────────────────────
   const handleSaveSettings = async () => {
+    if (!uid) return;
     setSettingsSaving(true);
     try {
       await fetch("/api/settings", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-user-id": uid },
         body: JSON.stringify(settings),
       });
-    } catch {}
-    localStorage.setItem("sewer_settings", JSON.stringify(settings));
-    setSettingsSaving(false);
-    setSettingsSaved(true);
-    setTimeout(() => setSettingsSaved(false), 2500);
+      localStorage.setItem("sewer_settings", JSON.stringify(settings));
+      setSavedMsg(true);
+      setTimeout(() => setSavedMsg(false), 2500);
+    } catch {
+      localStorage.setItem("sewer_settings", JSON.stringify(settings));
+    } finally {
+      setSettingsSaving(false);
+    }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("user");
+  const handleLogout = async () => {
+    await signOut(auth);
     router.replace("/login");
   };
 
@@ -304,35 +327,32 @@ export default function DashboardPage() {
   );
 
   // ── Styles ───────────────────────────────────────────────────
-  const tabBtn = (active: boolean): React.CSSProperties => ({
+  const tabBtn = (a: boolean): React.CSSProperties => ({
     padding: "8px 20px",
     borderRadius: "6px",
     fontSize: "13px",
     fontWeight: 600,
     cursor: "pointer",
     border: "none",
-    background: active ? "#0F2A4A" : "transparent",
-    color: active ? "#fff" : "#64748B",
+    background: a ? "#0F2A4A" : "transparent",
+    color: a ? "#fff" : "#64748B",
   });
-
-  const subTabBtn = (active: boolean): React.CSSProperties => ({
+  const subTabBtn = (a: boolean): React.CSSProperties => ({
     padding: "6px 16px",
     borderRadius: "6px",
     fontSize: "12px",
     fontWeight: 600,
     cursor: "pointer",
     border: "none",
-    background: active ? "#0F2A4A" : "#F1F5F9",
-    color: active ? "#fff" : "#64748B",
+    background: a ? "#0F2A4A" : "#F1F5F9",
+    color: a ? "#fff" : "#64748B",
   });
-
   const card: React.CSSProperties = {
     background: "#fff",
     border: "1px solid #E2E8F0",
     borderRadius: "12px",
     padding: "20px",
   };
-
   const inp: React.CSSProperties = {
     width: "100%",
     height: "36px",
@@ -345,7 +365,6 @@ export default function DashboardPage() {
     background: "#F8FAFC",
     color: "#0F172A",
   };
-
   const lbl: React.CSSProperties = {
     display: "block",
     fontSize: "11px",
@@ -355,7 +374,6 @@ export default function DashboardPage() {
     textTransform: "uppercase",
     letterSpacing: "0.05em",
   };
-
   const actionBtn = (bg: string, color: string): React.CSSProperties => ({
     padding: "5px 10px",
     borderRadius: "6px",
@@ -366,6 +384,16 @@ export default function DashboardPage() {
     background: bg,
     color,
   });
+
+  // ── Stats ────────────────────────────────────────────────────
+  const thisMonth = reports.filter((r) => {
+    if (!r.createdAt && !r.inspectedAt) return false;
+    const d = new Date(r.createdAt || r.inspectedAt);
+    const now = new Date();
+    return (
+      d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+    );
+  }).length;
 
   return (
     <div
@@ -397,7 +425,9 @@ export default function DashboardPage() {
             Dashboard
           </h1>
           <p style={{ fontSize: "13px", color: "#94A3B8", marginTop: "4px" }}>
-            Manage your inspection reports and templates
+            {settings.fullName
+              ? `Welcome back, ${settings.fullName}`
+              : "Manage your inspection reports"}
           </p>
         </div>
         <Link href="/reports/new">
@@ -418,7 +448,7 @@ export default function DashboardPage() {
         </Link>
       </div>
 
-      {/* Stats */}
+      {/* Stats — real data from Firestore */}
       <div
         style={{
           display: "grid",
@@ -429,19 +459,15 @@ export default function DashboardPage() {
       >
         {[
           { label: "Total Reports", value: reports.length, color: "#0F2A4A" },
-          {
-            label: "This Month",
-            value: reports.filter((r) => r.status === "COMPLETE").length,
-            color: "#2D8C4E",
-          },
+          { label: "This Month", value: thisMonth, color: "#2D8C4E" },
           {
             label: "Drafts",
             value: reports.filter((r) => r.status !== "COMPLETE").length,
             color: "#D97706",
           },
           {
-            label: "Templates Used",
-            value: templates.length,
+            label: "Complete",
+            value: reports.filter((r) => r.status === "COMPLETE").length,
             color: "#2563EB",
           },
         ].map(({ label, value, color }) => (
@@ -464,7 +490,7 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* Main Tabs */}
+      {/* Main panel */}
       <div
         style={{
           background: "#fff",
@@ -660,7 +686,6 @@ export default function DashboardPage() {
                           >
                             View
                           </button>
-                          {/* FIX: Edit stores data before redirect */}
                           <button
                             onClick={() => handleEdit(report)}
                             style={actionBtn("#EFF6FF", "#2563EB")}
@@ -746,8 +771,6 @@ export default function DashboardPage() {
                     </button>
                   </div>
                 </div>
-
-                {/* Template Name */}
                 <div style={{ marginBottom: "14px" }}>
                   <label style={lbl}>Template Name *</label>
                   <input
@@ -757,12 +780,10 @@ export default function DashboardPage() {
                         p ? { ...p, name: e.target.value } : p,
                       )
                     }
-                    placeholder="e.g. Standard Residential Inspection"
+                    placeholder="e.g. Standard Residential"
                     style={inp}
                   />
                 </div>
-
-                {/* Company Branding */}
                 <div
                   style={{
                     padding: "16px",
@@ -815,7 +836,7 @@ export default function DashboardPage() {
                       style={inp}
                     />
                   </div>
-                  <div style={{ marginBottom: "12px" }}>
+                  <div>
                     <label style={lbl}>Company Tagline</label>
                     <input
                       value={editingTemplate.companyTagline || ""}
@@ -829,8 +850,6 @@ export default function DashboardPage() {
                     />
                   </div>
                 </div>
-
-                {/* Statement of Service */}
                 <div
                   style={{
                     padding: "16px",
@@ -868,8 +887,6 @@ export default function DashboardPage() {
                     }}
                   />
                 </div>
-
-                {/* Report Options */}
                 <div
                   style={{
                     padding: "16px",
@@ -929,8 +946,6 @@ export default function DashboardPage() {
                     </label>
                   ))}
                 </div>
-
-                {/* Custom Dropdowns */}
                 <div
                   style={{
                     padding: "16px",
@@ -1542,7 +1557,6 @@ export default function DashboardPage() {
                     5 reports/month
                   </span>
                 </div>
-                {/* FIX: 3 plans — Free, Monthly, Annual */}
                 <div
                   style={{
                     display: "grid",
@@ -1645,34 +1659,6 @@ export default function DashboardPage() {
                       </button>
                     </div>
                   ))}
-                </div>
-                <div
-                  style={{
-                    padding: "16px",
-                    border: "1px solid #E2E8F0",
-                    borderRadius: "8px",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: "13px",
-                      fontWeight: 600,
-                      color: "#0F2A4A",
-                      marginBottom: "8px",
-                    }}
-                  >
-                    Billing History
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "13px",
-                      color: "#94A3B8",
-                      textAlign: "center",
-                      padding: "16px",
-                    }}
-                  >
-                    No billing history on free plan.
-                  </div>
                 </div>
               </div>
             )}
