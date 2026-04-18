@@ -2,6 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import {
+  onAuthStateChanged,
+  signOut,
+  sendPasswordResetEmail,
+} from "firebase/auth";
+import { auth } from "@/app/Lib/firebase";
 
 type UserSettings = {
   email: string;
@@ -18,6 +24,7 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<
     "account" | "company" | "subscription"
   >("account");
+  const [uid, setUid] = useState<string | null>(null);
   const [settings, setSettings] = useState<UserSettings>({
     email: "",
     fullName: "",
@@ -29,50 +36,81 @@ export default function SettingsPage() {
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
   const [plan] = useState("FREE");
 
-  // ✅ FIX 1 — Properly merge user email + saved settings without overwriting
   useEffect(() => {
-    const stored = localStorage.getItem("user");
-    const savedSettings = localStorage.getItem("sewer_settings");
-
-    if (savedSettings) {
-      const parsed = JSON.parse(savedSettings);
-      // Pull email from user if missing in saved settings
-      if (stored && !parsed.email) {
-        parsed.email = JSON.parse(stored).email || "";
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      if (!u) {
+        router.replace("/login");
+        return;
       }
-      setSettings(parsed);
-    } else if (stored) {
-      const u = JSON.parse(stored);
-      setSettings((p) => ({ ...p, email: u.email || "" }));
-    }
+      setUid(u.uid);
+
+      // Pre-fill from Firebase Auth
+      setSettings((p) => ({
+        ...p,
+        email: u.email || "",
+        fullName: u.displayName || "",
+      }));
+
+      // Then load saved settings from Firestore via API
+      try {
+        const res = await fetch("/api/settings", {
+          headers: { "x-user-id": u.uid },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data)
+            setSettings((p) => ({ ...p, ...data, email: u.email || p.email }));
+        }
+      } catch {
+        // Fall back to localStorage
+        const local = localStorage.getItem("sewer_settings");
+        if (local)
+          setSettings((p) => ({
+            ...p,
+            ...JSON.parse(local),
+            email: u.email || p.email,
+          }));
+      }
+    });
+    return () => unsub();
   }, []);
 
   const update = (k: string, v: string) =>
     setSettings((p) => ({ ...p, [k]: v }));
 
   const handleSave = async () => {
+    if (!uid) return;
     setSaving(true);
     try {
-      const res = await fetch("/api/settings", {
+      await fetch("/api/settings", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-user-id": uid },
         body: JSON.stringify(settings),
       });
-      if (!res.ok) throw new Error("API failed");
-    } catch (err) {
-      console.error("Settings API error:", err);
+      localStorage.setItem("sewer_settings", JSON.stringify(settings));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch {
+      localStorage.setItem("sewer_settings", JSON.stringify(settings));
+    } finally {
+      setSaving(false);
     }
-    // Always save to localStorage as fallback
-    localStorage.setItem("sewer_settings", JSON.stringify(settings));
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("user");
+  const handlePasswordReset = async () => {
+    if (!settings.email) return;
+    try {
+      await sendPasswordResetEmail(auth, settings.email);
+      setResetSent(true);
+      setTimeout(() => setResetSent(false), 4000);
+    } catch {}
+  };
+
+  const handleLogout = async () => {
+    await signOut(auth);
     router.replace("/login");
   };
 
@@ -87,7 +125,6 @@ export default function SettingsPage() {
     background: "#F8FAFC",
     width: "100%",
   };
-
   const lbl: React.CSSProperties = {
     display: "block",
     fontSize: "11px",
@@ -97,7 +134,6 @@ export default function SettingsPage() {
     textTransform: "uppercase",
     letterSpacing: "0.05em",
   };
-
   const card: React.CSSProperties = {
     background: "#fff",
     border: "1px solid #E2E8F0",
@@ -105,8 +141,7 @@ export default function SettingsPage() {
     padding: "24px",
     marginBottom: "16px",
   };
-
-  const tab = (active: boolean): React.CSSProperties => ({
+  const tabStyle = (active: boolean): React.CSSProperties => ({
     padding: "8px 18px",
     borderRadius: "6px",
     fontSize: "13px",
@@ -126,7 +161,6 @@ export default function SettingsPage() {
         fontFamily: "Inter, Arial, sans-serif",
       }}
     >
-      {/* Header */}
       <div
         style={{
           display: "flex",
@@ -177,7 +211,6 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Tabs */}
       <div
         style={{
           display: "flex",
@@ -190,26 +223,25 @@ export default function SettingsPage() {
         }}
       >
         <button
-          style={tab(activeTab === "account")}
+          style={tabStyle(activeTab === "account")}
           onClick={() => setActiveTab("account")}
         >
           👤 Account
         </button>
         <button
-          style={tab(activeTab === "company")}
+          style={tabStyle(activeTab === "company")}
           onClick={() => setActiveTab("company")}
         >
           🏢 Company
         </button>
         <button
-          style={tab(activeTab === "subscription")}
+          style={tabStyle(activeTab === "subscription")}
           onClick={() => setActiveTab("subscription")}
         >
           💳 Subscription
         </button>
       </div>
 
-      {/* Account Tab */}
       {activeTab === "account" && (
         <>
           <div style={card}>
@@ -243,10 +275,8 @@ export default function SettingsPage() {
                 <label style={lbl}>Email Address</label>
                 <input
                   value={settings.email}
-                  onChange={(e) => update("email", e.target.value)}
-                  placeholder="you@example.com"
-                  style={{ ...inp, color: "#94A3B8" }}
                   disabled
+                  style={{ ...inp, color: "#94A3B8" }}
                 />
               </div>
               <div>
@@ -282,10 +312,25 @@ export default function SettingsPage() {
                 marginBottom: "12px",
               }}
             >
-              Password reset is handled via email. Click below to receive a
-              reset link.
+              Password reset link will be sent to {settings.email}
             </div>
+            {resetSent && (
+              <div
+                style={{
+                  padding: "10px",
+                  background: "#F0FDF4",
+                  borderRadius: "8px",
+                  fontSize: "13px",
+                  color: "#16A34A",
+                  fontWeight: 600,
+                  marginBottom: "12px",
+                }}
+              >
+                ✓ Reset email sent — check your inbox
+              </div>
+            )}
             <button
+              onClick={handlePasswordReset}
               style={{
                 padding: "8px 18px",
                 borderRadius: "6px",
@@ -331,7 +376,6 @@ export default function SettingsPage() {
         </>
       )}
 
-      {/* Company Tab */}
       {activeTab === "company" && (
         <div style={card}>
           <h3
@@ -347,8 +391,7 @@ export default function SettingsPage() {
           <p
             style={{ fontSize: "12px", color: "#94A3B8", marginBottom: "16px" }}
           >
-            This info is used as defaults in your reports. You can override
-            per-template in the Templates tab.
+            This info is used as defaults in your reports.
           </p>
           <div
             style={{
@@ -397,7 +440,6 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Subscription Tab */}
       {activeTab === "subscription" && (
         <>
           <div style={card}>
@@ -425,67 +467,60 @@ export default function SettingsPage() {
                   borderRadius: "20px",
                   fontSize: "14px",
                   fontWeight: 800,
-                  background: plan === "FREE" ? "#F1F5F9" : "#F0FDF4",
-                  color: plan === "FREE" ? "#64748B" : "#16A34A",
+                  background: "#F1F5F9",
+                  color: "#64748B",
                 }}
               >
                 {plan}
               </div>
               <div style={{ fontSize: "13px", color: "#64748B" }}>
-                {plan === "FREE"
-                  ? "Limited to 5 reports per month"
-                  : "Unlimited reports"}
+                Limited to 5 reports per month
               </div>
             </div>
-
-            {plan === "FREE" && (
+            <div
+              style={{
+                background: "linear-gradient(135deg, #0F2A4A 0%, #1e4a7a 100%)",
+                borderRadius: "10px",
+                padding: "20px",
+                color: "#fff",
+              }}
+            >
               <div
                 style={{
-                  background:
-                    "linear-gradient(135deg, #0F2A4A 0%, #1e4a7a 100%)",
-                  borderRadius: "10px",
-                  padding: "20px",
-                  color: "#fff",
+                  fontSize: "16px",
+                  fontWeight: 800,
+                  marginBottom: "6px",
                 }}
               >
-                <div
-                  style={{
-                    fontSize: "16px",
-                    fontWeight: 800,
-                    marginBottom: "6px",
-                  }}
-                >
-                  Upgrade to Pro
-                </div>
-                <div
-                  style={{
-                    fontSize: "13px",
-                    color: "#CBD5E1",
-                    marginBottom: "16px",
-                    lineHeight: "1.6",
-                  }}
-                >
-                  Unlimited reports · Custom templates · Priority support · PDF
-                  watermark removed
-                </div>
-                <button
-                  style={{
-                    background: "#2D8C4E",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: "8px",
-                    padding: "10px 24px",
-                    fontSize: "14px",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  Subscribe Now
-                </button>
+                Upgrade to Pro
               </div>
-            )}
+              <div
+                style={{
+                  fontSize: "13px",
+                  color: "#CBD5E1",
+                  marginBottom: "16px",
+                  lineHeight: "1.6",
+                }}
+              >
+                Unlimited reports · Custom templates · Priority support · PDF
+                watermark removed
+              </div>
+              <button
+                style={{
+                  background: "#2D8C4E",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "8px",
+                  padding: "10px 24px",
+                  fontSize: "14px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Subscribe Now
+              </button>
+            </div>
           </div>
-
           <div style={card}>
             <h3
               style={{
