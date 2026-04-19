@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { onAuthStateChanged } from "firebase/auth";
+import { useRouter } from "next/navigation";
+import { auth } from "@/app/Lib/firebase";
 
 type CustomDropdown = { label: string; options: string[] };
-
 type Template = {
   id: string;
   name: string;
@@ -30,24 +32,55 @@ const emptyTemplate = (): Omit<Template, "id" | "createdAt"> => ({
 });
 
 export default function TemplatesPage() {
+  const router = useRouter();
+  const [uid, setUid] = useState<string | null>(null);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [editing, setEditing] = useState<Partial<Template> | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
-    fetchTemplates();
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
   }, []);
 
-  const fetchTemplates = async () => {
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      if (!u) {
+        router.replace("/login");
+        return;
+      }
+      setUid(u.uid);
+      fetchTemplates(u.uid);
+    });
+    return () => unsub();
+  }, []);
+
+  const fetchTemplates = async (userId: string) => {
+    setLoading(true);
     try {
-      const res = await fetch("/api/templates");
-      const data = await res.json();
-      setTemplates(data.templates || []);
-    } catch {
-      // Load from localStorage fallback
+      // Show localStorage instantly
       const local = localStorage.getItem("sewer_templates");
       if (local) setTemplates(JSON.parse(local));
+
+      // Load from Firestore
+      const res = await fetch("/api/templates", {
+        headers: { "x-user-id": userId },
+      });
+      const data = await res.json();
+      if (data.templates?.length) {
+        setTemplates(data.templates);
+        localStorage.setItem("sewer_templates", JSON.stringify(data.templates));
+      }
+    } catch {
+      const local = localStorage.getItem("sewer_templates");
+      if (local) setTemplates(JSON.parse(local));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -55,7 +88,6 @@ export default function TemplatesPage() {
     setEditing(emptyTemplate());
     setIsNew(true);
   };
-
   const handleEdit = (t: Template) => {
     setEditing({ ...t });
     setIsNew(false);
@@ -64,7 +96,10 @@ export default function TemplatesPage() {
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this template?")) return;
     try {
-      await fetch(`/api/templates/${id}`, { method: "DELETE" });
+      await fetch(`/api/templates/${id}`, {
+        method: "DELETE",
+        headers: { "x-user-id": uid! },
+      });
     } catch {}
     const updated = templates.filter((t) => t.id !== id);
     setTemplates(updated);
@@ -82,38 +117,34 @@ export default function TemplatesPage() {
       if (isNew) {
         const res = await fetch("/api/templates", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "x-user-id": uid! },
           body: JSON.stringify(editing),
         });
         saved = await res.json();
-        setTemplates((p) => {
-          const updated = [...p, saved];
-          localStorage.setItem("sewer_templates", JSON.stringify(updated));
-          return updated;
-        });
+        const updated = [saved, ...templates];
+        setTemplates(updated);
+        localStorage.setItem("sewer_templates", JSON.stringify(updated));
       } else {
         const res = await fetch(`/api/templates/${editing.id}`, {
           method: "PATCH",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "x-user-id": uid! },
           body: JSON.stringify(editing),
         });
         saved = await res.json();
-        setTemplates((p) => {
-          const updated = p.map((t) => (t.id === saved.id ? saved : t));
-          localStorage.setItem("sewer_templates", JSON.stringify(updated));
-          return updated;
-        });
+        const updated = templates.map((t) => (t.id === saved.id ? saved : t));
+        setTemplates(updated);
+        localStorage.setItem("sewer_templates", JSON.stringify(updated));
       }
       setEditing(null);
     } catch {
-      // Fallback: save to localStorage
+      // localStorage fallback
       const fallback: Template = {
         ...(editing as Template),
-        id: editing.id || Date.now().toString(),
+        id: (editing as any).id || Date.now().toString(),
         createdAt: new Date().toISOString(),
       };
       const updated = isNew
-        ? [...templates, fallback]
+        ? [fallback, ...templates]
         : templates.map((t) => (t.id === fallback.id ? fallback : t));
       setTemplates(updated);
       localStorage.setItem("sewer_templates", JSON.stringify(updated));
@@ -125,7 +156,6 @@ export default function TemplatesPage() {
 
   const updateEditing = (k: string, v: any) =>
     setEditing((p) => (p ? { ...p, [k]: v } : p));
-
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -134,51 +164,38 @@ export default function TemplatesPage() {
       updateEditing("companyLogo", ev.target?.result as string);
     reader.readAsDataURL(file);
   };
-
-  // Custom dropdown builder
-  const addDropdown = () => {
-    const current = editing?.customDropdowns || [];
+  const addDropdown = () =>
     updateEditing("customDropdowns", [
-      ...current,
+      ...(editing?.customDropdowns || []),
       { label: "", options: [""] },
     ]);
-  };
-
   const updateDropdownLabel = (i: number, val: string) => {
-    const arr = [...(editing?.customDropdowns || [])];
-    arr[i] = { ...arr[i], label: val };
-    updateEditing("customDropdowns", arr);
+    const a = [...(editing?.customDropdowns || [])];
+    a[i] = { ...a[i], label: val };
+    updateEditing("customDropdowns", a);
   };
-
   const addDropdownOption = (i: number) => {
-    const arr = [...(editing?.customDropdowns || [])];
-    arr[i] = { ...arr[i], options: [...arr[i].options, ""] };
-    updateEditing("customDropdowns", arr);
+    const a = [...(editing?.customDropdowns || [])];
+    a[i] = { ...a[i], options: [...a[i].options, ""] };
+    updateEditing("customDropdowns", a);
   };
-
   const updateDropdownOption = (di: number, oi: number, val: string) => {
-    const arr = [...(editing?.customDropdowns || [])];
-    const opts = [...arr[di].options];
-    opts[oi] = val;
-    arr[di] = { ...arr[di], options: opts };
-    updateEditing("customDropdowns", arr);
+    const a = [...(editing?.customDropdowns || [])];
+    const o = [...a[di].options];
+    o[oi] = val;
+    a[di] = { ...a[di], options: o };
+    updateEditing("customDropdowns", a);
   };
-
   const removeDropdownOption = (di: number, oi: number) => {
-    const arr = [...(editing?.customDropdowns || [])];
-    arr[di] = {
-      ...arr[di],
-      options: arr[di].options.filter((_, i) => i !== oi),
-    };
-    updateEditing("customDropdowns", arr);
+    const a = [...(editing?.customDropdowns || [])];
+    a[di] = { ...a[di], options: a[di].options.filter((_, i) => i !== oi) };
+    updateEditing("customDropdowns", a);
   };
-
-  const removeDropdown = (i: number) => {
+  const removeDropdown = (i: number) =>
     updateEditing(
       "customDropdowns",
       (editing?.customDropdowns || []).filter((_, idx) => idx !== i),
     );
-  };
 
   const inp: React.CSSProperties = {
     height: "36px",
@@ -191,7 +208,6 @@ export default function TemplatesPage() {
     background: "#F8FAFC",
     width: "100%",
   };
-
   const lbl: React.CSSProperties = {
     display: "block",
     fontSize: "11px",
@@ -201,21 +217,20 @@ export default function TemplatesPage() {
     textTransform: "uppercase",
     letterSpacing: "0.05em",
   };
-
   const card: React.CSSProperties = {
     background: "#fff",
     border: "1px solid #E2E8F0",
     borderRadius: "12px",
-    padding: "20px",
+    padding: isMobile ? "14px" : "20px",
     marginBottom: "16px",
   };
 
-  // ── Editor view ────────────────────────────────────────────────
+  // ── EDITOR VIEW ──────────────────────────────────────────────
   if (editing !== null)
     return (
       <div
         style={{
-          padding: "24px",
+          padding: isMobile ? "12px" : "24px",
           maxWidth: "800px",
           margin: "0 auto",
           fontFamily: "Inter, Arial, sans-serif",
@@ -227,11 +242,13 @@ export default function TemplatesPage() {
             justifyContent: "space-between",
             alignItems: "center",
             marginBottom: "24px",
+            flexWrap: "wrap",
+            gap: "10px",
           }}
         >
           <h1
             style={{
-              fontSize: "20px",
+              fontSize: isMobile ? "18px" : "20px",
               fontWeight: 800,
               color: "#0F2A4A",
               margin: 0,
@@ -243,7 +260,7 @@ export default function TemplatesPage() {
             <button
               onClick={() => setEditing(null)}
               style={{
-                padding: "8px 16px",
+                padding: "8px 14px",
                 borderRadius: "8px",
                 border: "1px solid #E2E8F0",
                 background: "#fff",
@@ -259,7 +276,7 @@ export default function TemplatesPage() {
               onClick={handleSave}
               disabled={saving}
               style={{
-                padding: "8px 20px",
+                padding: "8px 18px",
                 borderRadius: "8px",
                 border: "none",
                 background: saving ? "#94A3B8" : "#2D8C4E",
@@ -286,15 +303,13 @@ export default function TemplatesPage() {
           >
             Template Info
           </h3>
-          <div style={{ marginBottom: "12px" }}>
-            <label style={lbl}>Template Name *</label>
-            <input
-              value={editing.name || ""}
-              onChange={(e) => updateEditing("name", e.target.value)}
-              placeholder="e.g. Standard Residential Inspection"
-              style={inp}
-            />
-          </div>
+          <label style={lbl}>Template Name *</label>
+          <input
+            value={editing.name || ""}
+            onChange={(e) => updateEditing("name", e.target.value)}
+            placeholder="e.g. Standard Residential Inspection"
+            style={inp}
+          />
         </div>
 
         {/* Company Branding */}
@@ -309,7 +324,6 @@ export default function TemplatesPage() {
           >
             Company Branding
           </h3>
-
           <div style={{ marginBottom: "14px" }}>
             <label style={lbl}>Company Logo</label>
             <input
@@ -326,7 +340,7 @@ export default function TemplatesPage() {
             {editing.companyLogo && (
               <img
                 src={editing.companyLogo}
-                alt="Logo preview"
+                alt="Logo"
                 style={{
                   maxHeight: "60px",
                   objectFit: "contain",
@@ -337,7 +351,6 @@ export default function TemplatesPage() {
               />
             )}
           </div>
-
           <div style={{ marginBottom: "12px" }}>
             <label style={lbl}>Company Name</label>
             <input
@@ -347,8 +360,7 @@ export default function TemplatesPage() {
               style={inp}
             />
           </div>
-
-          <div style={{ marginBottom: "12px" }}>
+          <div>
             <label style={lbl}>Tagline</label>
             <input
               value={editing.companyTagline || ""}
@@ -400,7 +412,6 @@ export default function TemplatesPage() {
           >
             Report Options
           </h3>
-
           {[
             {
               key: "includeDefectGraphic",
@@ -438,7 +449,7 @@ export default function TemplatesPage() {
           ))}
         </div>
 
-        {/* Custom Dropdowns for General Notes */}
+        {/* Custom Dropdowns */}
         <div style={card}>
           <h3
             style={{
@@ -456,7 +467,6 @@ export default function TemplatesPage() {
             These dropdowns appear in the General Notes tab of every report
             using this template.
           </p>
-
           {(editing.customDropdowns || []).map((dd, i) => (
             <div
               key={i}
@@ -539,7 +549,6 @@ export default function TemplatesPage() {
               </button>
             </div>
           ))}
-
           <button
             onClick={addDropdown}
             style={{
@@ -559,11 +568,11 @@ export default function TemplatesPage() {
       </div>
     );
 
-  // ── Templates list view ────────────────────────────────────────
+  // ── LIST VIEW ────────────────────────────────────────────────
   return (
     <div
       style={{
-        padding: "24px",
+        padding: isMobile ? "12px" : "24px",
         maxWidth: "1000px",
         margin: "0 auto",
         fontFamily: "Inter, Arial, sans-serif",
@@ -580,7 +589,7 @@ export default function TemplatesPage() {
         <div>
           <h1
             style={{
-              fontSize: "22px",
+              fontSize: isMobile ? "18px" : "22px",
               fontWeight: 800,
               color: "#0F2A4A",
               margin: 0,
@@ -599,17 +608,21 @@ export default function TemplatesPage() {
             color: "#fff",
             border: "none",
             borderRadius: "8px",
-            padding: "10px 20px",
-            fontSize: "13px",
+            padding: isMobile ? "8px 12px" : "10px 20px",
+            fontSize: isMobile ? "12px" : "13px",
             fontWeight: 700,
             cursor: "pointer",
           }}
         >
-          + New Template
+          + {isMobile ? "New" : "New Template"}
         </button>
       </div>
 
-      {templates.length === 0 ? (
+      {loading ? (
+        <div style={{ textAlign: "center", padding: "60px", color: "#94A3B8" }}>
+          Loading templates...
+        </div>
+      ) : templates.length === 0 ? (
         <div
           style={{
             background: "#fff",
@@ -656,7 +669,7 @@ export default function TemplatesPage() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(2, 1fr)",
+            gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)",
             gap: "16px",
           }}
         >
@@ -667,7 +680,7 @@ export default function TemplatesPage() {
                 background: "#fff",
                 border: "1px solid #E2E8F0",
                 borderRadius: "12px",
-                padding: "20px",
+                padding: isMobile ? "14px" : "20px",
               }}
             >
               <div
@@ -678,7 +691,7 @@ export default function TemplatesPage() {
                   marginBottom: "12px",
                 }}
               >
-                <div>
+                <div style={{ flex: 1 }}>
                   {t.companyLogo && (
                     <img
                       src={t.companyLogo}
@@ -711,7 +724,6 @@ export default function TemplatesPage() {
                   </div>
                 </div>
               </div>
-
               <div
                 style={{
                   fontSize: "12px",
@@ -730,12 +742,11 @@ export default function TemplatesPage() {
                 )}
                 {t.customDropdowns?.length > 0 && (
                   <span>
-                    {t.customDropdowns.length} custom dropdown
+                    ✓ {t.customDropdowns.length} dropdown
                     {t.customDropdowns.length > 1 ? "s" : ""}
                   </span>
                 )}
               </div>
-
               <div style={{ display: "flex", gap: "8px" }}>
                 <button
                   onClick={() => handleEdit(t)}
