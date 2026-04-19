@@ -1,11 +1,4 @@
-// app/api/reports/pdf/route.ts
-// Upgraded: now uses Puppeteer to generate a real PDF binary
-// instead of returning raw HTML. Keeps your exact existing HTML template.
-
 import { NextRequest, NextResponse } from "next/server";
-
-export const runtime = "nodejs"; // ✅ required for Puppeteer
-export const maxDuration = 60; // allow up to 60s for generation
 
 export async function POST(req: NextRequest) {
   try {
@@ -18,7 +11,6 @@ export async function POST(req: NextRequest) {
       report.propertyPhotos ||
       (report.propertyPhoto ? [report.propertyPhoto] : []);
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
     const footer = `
       <div class="rf">
         This report was prepared for the client listed above in accordance with our inspection agreement.<br>
@@ -36,12 +28,10 @@ export async function POST(req: NextRequest) {
         ?.filter((l: string) => l?.trim())
         .map(
           (link: string, i: number) => `
-          <div class="info-row">
-            <span class="info-label">Video Link ${i + 1}</span>
-            <span class="info-value">
-              <a href="${link}" style="color:#0066cc;">${link}</a>
-            </span>
-          </div>`,
+        <div class="info-row">
+          <span class="info-label">Video Link ${i + 1}</span>
+          <span class="info-value"><a href="${link}" style="color:#0066cc;">${link}</a></span>
+        </div>`,
         )
         .join("") || "";
 
@@ -84,22 +74,17 @@ export async function POST(req: NextRequest) {
               const photosHtml =
                 d.images?.length > 0
                   ? `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:10px;">
-                      ${d.images
-                        .map(
-                          (img: any) =>
-                            `<img src="${img.url}" style="width:100%;height:200px;object-fit:cover;object-position:center;border:1px solid #ddd;border-radius:4px;display:block;" />`,
-                        )
-                        .join("")}
-                    </div>`
+                ${d.images.map((img: any) => `<img src="${img.url}" style="width:100%;height:200px;object-fit:cover;object-position:center;border:1px solid #ddd;border-radius:4px;display:block;" />`).join("")}
+               </div>`
                   : "";
               return `
-              <div style="margin-bottom:28px;page-break-inside:avoid;">
-                <p style="font-size:13px;line-height:1.7;margin-bottom:8px;">
-                  <strong>#${i + 1} @ ${time}${d.footageStart ? ` / ${d.footageStart} ft` : ""} — ${d.conditionType !== "Select Condition Type" ? d.conditionType : "Observation"}${sevLabel}.</strong>
-                  ${d.narrative ? ` ${d.narrative}` : ""}
-                </p>
-                ${photosHtml}
-              </div>`;
+            <div style="margin-bottom:28px;page-break-inside:avoid;">
+              <p style="font-size:13px;line-height:1.7;margin-bottom:8px;">
+                <strong>#${i + 1} @ ${time}${d.footageStart ? ` / ${d.footageStart} ft` : ""} — ${d.conditionType !== "Select Condition Type" ? d.conditionType : "Observation"}${sevLabel}.</strong>
+                ${d.narrative ? ` ${d.narrative}` : ""}
+              </p>
+              ${photosHtml}
+            </div>`;
             })
             .join("");
 
@@ -214,7 +199,6 @@ export async function POST(req: NextRequest) {
         </table>
       </div>`;
 
-    // ── Build the full HTML (your existing template — unchanged) ─────────────
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -222,7 +206,7 @@ export async function POST(req: NextRequest) {
 <title>Sewer Inspection Report</title>
 <style>
   *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
-  html, body { width:100%; background:#fff; font-family:Arial,sans-serif; font-size:13px; color:#000; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  html, body { width:100%; background:#fff; font-family:Arial,sans-serif; font-size:13px; color:#000; }
 
   @page { size: letter; margin: 0.45in 0.5in; }
   @page :first { margin-top: 0; }
@@ -235,7 +219,6 @@ export async function POST(req: NextRequest) {
   .cover-logo span { color:#2D8C4E; }
   .cover-tagline { font-size:15px; color:#2D8C4E; font-weight:700; margin-bottom:3px; }
   .cover-subtitle { font-size:13px; color:#555; margin-bottom:18px; }
-
   .cover-photo-wrap { width:100%; max-width:680px; margin:0 auto; display:flex; justify-content:center; align-items:center; }
   .cover-photo { width:100%; max-width:680px; height:420px; object-fit:cover; object-position:center center; display:block; border-radius:4px; border:1px solid #ddd; }
   .cover-no-photo { width:100%; max-width:680px; height:420px; background:#f0f0f0; display:flex; align-items:center; justify-content:center; font-size:14px; color:#999; border-radius:4px; border:1px solid #ddd; }
@@ -263,6 +246,14 @@ export async function POST(req: NextRequest) {
   .mat-table th { background:#0F2A4A; color:#fff; font-size:12px; padding:8px 10px; text-align:left; border:1px solid #ccc; }
   .mat-table td { font-size:12px; padding:7px 10px; border:1px solid #ddd; }
   .mat-table tr:nth-child(even) td { background:#f9f9f9; }
+
+  @media print {
+    @page { size: letter; margin: 0.45in 0.5in; }
+    body { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .page { page-break-after:always; }
+    .page:last-child { page-break-after:auto; }
+    .cover { page-break-after:always; }
+  }
 </style>
 </head>
 <body>
@@ -431,11 +422,7 @@ ${
   ${header(date, ref)}
   <div class="sec-sub">Corrective Action Recommendations</div>
   ${correctiveRows || '<p style="color:#999;font-size:13px;">No corrective actions selected.</p>'}
-  ${
-    report.correctionNotes
-      ? `<div style="margin-top:14px;"><div class="sys-label">Additional Notes</div><div class="sys-value" style="white-space:pre-wrap;">${report.correctionNotes}</div></div>`
-      : ""
-  }
+  ${report.correctionNotes ? `<div style="margin-top:14px;"><div class="sys-label">Additional Notes</div><div class="sys-value" style="white-space:pre-wrap;">${report.correctionNotes}</div></div>` : ""}
   <div style="margin-top:20px;padding:14px;background:#F8FAFC;border-radius:5px;border:1px solid #eee;">
     <p style="font-size:13px;line-height:1.8;margin-bottom:8px;">Given the condition(s) above we recommend full evaluations and/or corrections with written findings and costs to cure by a competent licensed plumbing contractor before the end/close of the inspection contingency period.</p>
     <p style="font-size:13px;line-height:1.8;">Recommend sewer inspections after repairs are made to ensure efficacy of work and to inspect any areas of the sewer lateral not visible due to defect(s).</p>
@@ -502,53 +489,23 @@ ${
   </div>
 </div>
 
+<script>
+  document.title = "";
+  if (window.opener) {
+    setTimeout(function() { window.print(); }, 1200);
+  }
+</script>
+
 </body>
 </html>`;
 
-    // ── Puppeteer: render HTML → real PDF binary ──────────────────────────────
-    const puppeteer = await import("puppeteer");
-    const browser = await puppeteer.default.launch({
-      headless: true,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-        "--no-zygote",
-      ],
-    });
-
-    const page = await browser.newPage();
-
-    // setContent avoids any "about:blank" flash
-    await page.setContent(html, { waitUntil: "networkidle0" });
-
-    // Wait for fonts and images
-    await page.evaluateHandle("document.fonts.ready");
-
-    const pdfBuffer = await page.pdf({
-      format: "Letter",
-      printBackground: true, // ✅ prints background colors
-      displayHeaderFooter: false, // ✅ disables browser "about:blank" header
-      margin: { top: "0px", bottom: "0px", left: "0px", right: "0px" },
-    });
-
-    await browser.close();
-
-    // ── Return as downloadable PDF ────────────────────────────────────────────
-    const filename = `SewerLabz-${ref || "Report"}-${date || Date.now()}.pdf`;
-
-    return new NextResponse(pdfBuffer as Buffer, {
-      status: 200,
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${filename}"`,
-      },
+    return new NextResponse(html, {
+      headers: { "Content-Type": "text/html; charset=utf-8" },
     });
   } catch (error: any) {
-    console.error("[PDF Generation Error]", error);
+    console.error("[PDF Error]", error);
     return NextResponse.json(
-      { error: "Failed to generate PDF", detail: error?.message },
+      { error: "Failed to generate report", detail: error?.message },
       { status: 500 },
     );
   }
