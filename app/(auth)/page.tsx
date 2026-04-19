@@ -16,7 +16,6 @@ type Report = {
   createdAt: string;
   fileNumber: string;
 };
-
 type Template = {
   id: string;
   name: string;
@@ -28,7 +27,6 @@ type Template = {
   showSuggestedMaintenance: boolean;
   customDropdowns: { label: string; options: string[] }[];
 };
-
 type Settings = {
   fullName: string;
   email: string;
@@ -45,6 +43,7 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<
     "reports" | "templates" | "settings"
   >("reports");
+  const [isMobile, setIsMobile] = useState(false);
 
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,7 +70,13 @@ export default function DashboardPage() {
     "account" | "company" | "subscription"
   >("account");
 
-  // Get Firebase UID
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       if (!u) {
@@ -88,7 +93,6 @@ export default function DashboardPage() {
     return () => unsub();
   }, []);
 
-  // Load all data once UID is available
   useEffect(() => {
     if (!uid) return;
     loadReports(uid);
@@ -99,11 +103,8 @@ export default function DashboardPage() {
   const loadReports = async (userId: string) => {
     setLoading(true);
     try {
-      // Show localStorage instantly
       const local = localStorage.getItem("sewer_reports");
       if (local) setReports(JSON.parse(local));
-
-      // Then load from Firestore
       const res = await fetch("/api/reports", {
         headers: { "x-user-id": userId },
       });
@@ -140,7 +141,6 @@ export default function DashboardPage() {
     } catch {}
   };
 
-  // ── Reports ──────────────────────────────────────────────────
   const handlePDF = async (report: Report) => {
     try {
       let data: any = null;
@@ -203,7 +203,6 @@ export default function DashboardPage() {
     router.push(`/reports/new?edit=${report.id}`);
   };
 
-  // ── Templates ────────────────────────────────────────────────
   const handleNewTemplate = () => {
     setEditingTemplate({
       name: "",
@@ -218,7 +217,6 @@ export default function DashboardPage() {
     });
     setIsNewTemplate(true);
   };
-
   const handleSaveTemplate = () => {
     if (!editingTemplate?.name?.trim()) {
       alert("Template name is required");
@@ -237,14 +235,12 @@ export default function DashboardPage() {
     setEditingTemplate(null);
     setSavingTemplate(false);
   };
-
   const handleDeleteTemplate = (id: string) => {
     if (!confirm("Delete this template?")) return;
     const updated = templates.filter((t) => t.id !== id);
     setTemplates(updated);
     localStorage.setItem("sewer_templates", JSON.stringify(updated));
   };
-
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -255,31 +251,28 @@ export default function DashboardPage() {
       );
     reader.readAsDataURL(file);
   };
-
   const addCustomDropdown = () => {
-    const current = editingTemplate?.customDropdowns || [];
+    const c = editingTemplate?.customDropdowns || [];
     setEditingTemplate((p) =>
-      p
-        ? { ...p, customDropdowns: [...current, { label: "", options: [""] }] }
-        : p,
+      p ? { ...p, customDropdowns: [...c, { label: "", options: [""] }] } : p,
     );
   };
   const updateDropdownLabel = (i: number, val: string) => {
-    const arr = [...(editingTemplate?.customDropdowns || [])];
-    arr[i] = { ...arr[i], label: val };
-    setEditingTemplate((p) => (p ? { ...p, customDropdowns: arr } : p));
+    const a = [...(editingTemplate?.customDropdowns || [])];
+    a[i] = { ...a[i], label: val };
+    setEditingTemplate((p) => (p ? { ...p, customDropdowns: a } : p));
   };
   const addDropdownOption = (i: number) => {
-    const arr = [...(editingTemplate?.customDropdowns || [])];
-    arr[i] = { ...arr[i], options: [...arr[i].options, ""] };
-    setEditingTemplate((p) => (p ? { ...p, customDropdowns: arr } : p));
+    const a = [...(editingTemplate?.customDropdowns || [])];
+    a[i] = { ...a[i], options: [...a[i].options, ""] };
+    setEditingTemplate((p) => (p ? { ...p, customDropdowns: a } : p));
   };
   const updateDropdownOption = (di: number, oi: number, val: string) => {
-    const arr = [...(editingTemplate?.customDropdowns || [])];
-    const opts = [...arr[di].options];
-    opts[oi] = val;
-    arr[di] = { ...arr[di], options: opts };
-    setEditingTemplate((p) => (p ? { ...p, customDropdowns: arr } : p));
+    const a = [...(editingTemplate?.customDropdowns || [])];
+    const o = [...a[di].options];
+    o[oi] = val;
+    a[di] = { ...a[di], options: o };
+    setEditingTemplate((p) => (p ? { ...p, customDropdowns: a } : p));
   };
   const removeDropdown = (i: number) => {
     setEditingTemplate((p) =>
@@ -294,7 +287,6 @@ export default function DashboardPage() {
     );
   };
 
-  // ── Settings ─────────────────────────────────────────────────
   const handleSaveSettings = async () => {
     if (!uid) return;
     setSettingsSaving(true);
@@ -326,11 +318,20 @@ export default function DashboardPage() {
       r.location?.toLowerCase().includes(search.toLowerCase()),
   );
 
+  const thisMonth = reports.filter((r) => {
+    if (!r.createdAt && !r.inspectedAt) return false;
+    const d = new Date(r.createdAt || r.inspectedAt),
+      now = new Date();
+    return (
+      d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+    );
+  }).length;
+
   // ── Styles ───────────────────────────────────────────────────
   const tabBtn = (a: boolean): React.CSSProperties => ({
-    padding: "8px 20px",
+    padding: isMobile ? "8px 12px" : "8px 20px",
     borderRadius: "6px",
-    fontSize: "13px",
+    fontSize: isMobile ? "12px" : "13px",
     fontWeight: 600,
     cursor: "pointer",
     border: "none",
@@ -338,7 +339,7 @@ export default function DashboardPage() {
     color: a ? "#fff" : "#64748B",
   });
   const subTabBtn = (a: boolean): React.CSSProperties => ({
-    padding: "6px 16px",
+    padding: "6px 12px",
     borderRadius: "6px",
     fontSize: "12px",
     fontWeight: 600,
@@ -351,7 +352,7 @@ export default function DashboardPage() {
     background: "#fff",
     border: "1px solid #E2E8F0",
     borderRadius: "12px",
-    padding: "20px",
+    padding: isMobile ? "14px" : "20px",
   };
   const inp: React.CSSProperties = {
     width: "100%",
@@ -375,9 +376,9 @@ export default function DashboardPage() {
     letterSpacing: "0.05em",
   };
   const actionBtn = (bg: string, color: string): React.CSSProperties => ({
-    padding: "5px 10px",
+    padding: "5px 8px",
     borderRadius: "6px",
-    fontSize: "12px",
+    fontSize: "11px",
     fontWeight: 600,
     cursor: "pointer",
     border: "none",
@@ -385,20 +386,10 @@ export default function DashboardPage() {
     color,
   });
 
-  // ── Stats ────────────────────────────────────────────────────
-  const thisMonth = reports.filter((r) => {
-    if (!r.createdAt && !r.inspectedAt) return false;
-    const d = new Date(r.createdAt || r.inspectedAt);
-    const now = new Date();
-    return (
-      d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
-    );
-  }).length;
-
   return (
     <div
       style={{
-        padding: "24px",
+        padding: isMobile ? "12px" : "24px",
         maxWidth: "1100px",
         margin: "0 auto",
         fontFamily: "Inter, Arial, sans-serif",
@@ -410,13 +401,13 @@ export default function DashboardPage() {
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          marginBottom: "24px",
+          marginBottom: "16px",
         }}
       >
         <div>
           <h1
             style={{
-              fontSize: "22px",
+              fontSize: isMobile ? "18px" : "22px",
               fontWeight: 800,
               color: "#0F2A4A",
               margin: 0,
@@ -424,7 +415,7 @@ export default function DashboardPage() {
           >
             Dashboard
           </h1>
-          <p style={{ fontSize: "13px", color: "#94A3B8", marginTop: "4px" }}>
+          <p style={{ fontSize: "12px", color: "#94A3B8", marginTop: "2px" }}>
             {settings.fullName
               ? `Welcome back, ${settings.fullName}`
               : "Manage your inspection reports"}
@@ -437,29 +428,29 @@ export default function DashboardPage() {
               color: "#fff",
               border: "none",
               borderRadius: "8px",
-              padding: "10px 20px",
-              fontSize: "13px",
+              padding: isMobile ? "8px 12px" : "10px 20px",
+              fontSize: isMobile ? "12px" : "13px",
               fontWeight: 700,
               cursor: "pointer",
             }}
           >
-            + New Report
+            {isMobile ? "+ New" : "+ New Report"}
           </button>
         </Link>
       </div>
 
-      {/* Stats — real data from Firestore */}
+      {/* Stats — responsive grid */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
-          gap: "16px",
-          marginBottom: "24px",
+          gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)",
+          gap: isMobile ? "10px" : "16px",
+          marginBottom: "16px",
         }}
       >
         {[
-          { label: "Total Reports", value: reports.length, color: "#0F2A4A" },
-          { label: "This Month", value: thisMonth, color: "#2D8C4E" },
+          { label: "Total", value: reports.length, color: "#0F2A4A" },
+          { label: "Month", value: thisMonth, color: "#2D8C4E" },
           {
             label: "Drafts",
             value: reports.filter((r) => r.status !== "COMPLETE").length,
@@ -472,14 +463,20 @@ export default function DashboardPage() {
           },
         ].map(({ label, value, color }) => (
           <div key={label} style={card}>
-            <div style={{ fontSize: "28px", fontWeight: 800, color }}>
+            <div
+              style={{
+                fontSize: isMobile ? "22px" : "28px",
+                fontWeight: 800,
+                color,
+              }}
+            >
               {value}
             </div>
             <div
               style={{
-                fontSize: "12px",
+                fontSize: "11px",
                 color: "#94A3B8",
-                marginTop: "4px",
+                marginTop: "2px",
                 fontWeight: 600,
                 textTransform: "uppercase",
               }}
@@ -503,9 +500,10 @@ export default function DashboardPage() {
           style={{
             display: "flex",
             gap: "4px",
-            padding: "12px 16px",
+            padding: "10px 12px",
             borderBottom: "1px solid #E2E8F0",
             background: "#FAFAFA",
+            overflowX: "auto",
           }}
         >
           <button
@@ -530,16 +528,15 @@ export default function DashboardPage() {
 
         {/* REPORTS TAB */}
         {activeTab === "reports" && (
-          <div style={{ padding: "16px" }}>
-            <div style={{ marginBottom: "14px" }}>
-              <input
-                type="text"
-                placeholder="Search by client, location, title..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                style={{ ...inp, height: "38px" }}
-              />
-            </div>
+          <div style={{ padding: isMobile ? "12px" : "16px" }}>
+            <input
+              type="text"
+              placeholder="Search reports..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{ ...inp, height: "38px", marginBottom: "14px" }}
+            />
+
             {loading ? (
               <div
                 style={{
@@ -563,15 +560,6 @@ export default function DashboardPage() {
                 >
                   No reports yet
                 </div>
-                <div
-                  style={{
-                    fontSize: "13px",
-                    color: "#94A3B8",
-                    marginBottom: "20px",
-                  }}
-                >
-                  Create your first inspection report
-                </div>
                 <Link href="/reports/new">
                   <button
                     style={{
@@ -583,13 +571,116 @@ export default function DashboardPage() {
                       fontSize: "13px",
                       fontWeight: 600,
                       cursor: "pointer",
+                      marginTop: "12px",
                     }}
                   >
                     + New Report
                   </button>
                 </Link>
               </div>
+            ) : isMobile ? (
+              /* Mobile card layout instead of table */
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "10px",
+                }}
+              >
+                {filtered.map((report) => (
+                  <div
+                    key={report.id}
+                    style={{
+                      border: "1px solid #E2E8F0",
+                      borderRadius: "10px",
+                      padding: "14px",
+                      background: "#FAFAFA",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                        marginBottom: "8px",
+                      }}
+                    >
+                      <div style={{ flex: 1 }}>
+                        <div
+                          style={{
+                            fontSize: "14px",
+                            fontWeight: 700,
+                            color: "#0F2A4A",
+                            marginBottom: "2px",
+                          }}
+                        >
+                          {report.title || "Untitled"}
+                        </div>
+                        <div style={{ fontSize: "12px", color: "#64748B" }}>
+                          {report.clientName || "—"} ·{" "}
+                          {report.inspectedAt || "—"}
+                        </div>
+                        {report.fileNumber && (
+                          <div
+                            style={{
+                              fontSize: "11px",
+                              color: "#94A3B8",
+                              marginTop: "2px",
+                            }}
+                          >
+                            #{report.fileNumber}
+                          </div>
+                        )}
+                      </div>
+                      <span
+                        style={{
+                          padding: "3px 8px",
+                          borderRadius: "20px",
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          background:
+                            report.status === "DRAFT" ? "#FFFBEB" : "#F0FDF4",
+                          color:
+                            report.status === "DRAFT" ? "#D97706" : "#16A34A",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {report.status || "DRAFT"}
+                      </span>
+                    </div>
+                    <div
+                      style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}
+                    >
+                      <button
+                        onClick={() => router.push(`/reports/${report.id}`)}
+                        style={actionBtn("#F1F5F9", "#0F2A4A")}
+                      >
+                        View
+                      </button>
+                      <button
+                        onClick={() => handleEdit(report)}
+                        style={actionBtn("#EFF6FF", "#2563EB")}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handlePDF(report)}
+                        style={actionBtn("#F0FDF4", "#16A34A")}
+                      >
+                        PDF
+                      </button>
+                      <button
+                        onClick={() => handleDeleteReport(report.id)}
+                        style={actionBtn("#FEF2F2", "#DC2626")}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : (
+              /* Desktop table */
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ background: "#F8FAFC" }}>
@@ -716,7 +807,7 @@ export default function DashboardPage() {
 
         {/* TEMPLATES TAB */}
         {activeTab === "templates" && (
-          <div style={{ padding: "20px" }}>
+          <div style={{ padding: isMobile ? "12px" : "20px" }}>
             {editingTemplate ? (
               <div>
                 <div
@@ -741,7 +832,7 @@ export default function DashboardPage() {
                     <button
                       onClick={() => setEditingTemplate(null)}
                       style={{
-                        padding: "7px 16px",
+                        padding: "7px 14px",
                         borderRadius: "6px",
                         border: "1px solid #E2E8F0",
                         background: "#fff",
@@ -757,7 +848,7 @@ export default function DashboardPage() {
                       onClick={handleSaveTemplate}
                       disabled={savingTemplate}
                       style={{
-                        padding: "7px 16px",
+                        padding: "7px 14px",
                         borderRadius: "6px",
                         border: "none",
                         background: "#2D8C4E",
@@ -767,7 +858,7 @@ export default function DashboardPage() {
                         cursor: "pointer",
                       }}
                     >
-                      {savingTemplate ? "Saving..." : "Save Template"}
+                      {savingTemplate ? "Saving..." : "Save"}
                     </button>
                   </div>
                 </div>
@@ -784,171 +875,158 @@ export default function DashboardPage() {
                     style={inp}
                   />
                 </div>
-                <div
-                  style={{
-                    padding: "16px",
-                    border: "1px solid #E2E8F0",
-                    borderRadius: "10px",
-                    marginBottom: "14px",
-                  }}
-                >
-                  <h4
-                    style={{
-                      fontSize: "13px",
-                      fontWeight: 700,
-                      color: "#0F2A4A",
-                      margin: "0 0 12px",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    Company Branding
-                  </h4>
-                  <div style={{ marginBottom: "12px" }}>
-                    <label style={lbl}>Company Logo</label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleLogoUpload}
-                      style={{ fontSize: "13px", color: "#64748B" }}
-                    />
-                    {editingTemplate.companyLogo && (
-                      <img
-                        src={editingTemplate.companyLogo}
-                        alt="Logo"
-                        style={{
-                          maxHeight: "40px",
-                          marginTop: "8px",
-                          display: "block",
-                        }}
-                      />
-                    )}
-                  </div>
-                  <div style={{ marginBottom: "12px" }}>
-                    <label style={lbl}>Company Name</label>
-                    <input
-                      value={editingTemplate.companyName || ""}
-                      onChange={(e) =>
-                        setEditingTemplate((p) =>
-                          p ? { ...p, companyName: e.target.value } : p,
-                        )
-                      }
-                      placeholder="Sewer Labz"
-                      style={inp}
-                    />
-                  </div>
-                  <div>
-                    <label style={lbl}>Company Tagline</label>
-                    <input
-                      value={editingTemplate.companyTagline || ""}
-                      onChange={(e) =>
-                        setEditingTemplate((p) =>
-                          p ? { ...p, companyTagline: e.target.value } : p,
-                        )
-                      }
-                      placeholder="Don't Let Your Drain Be A Pain!"
-                      style={inp}
-                    />
-                  </div>
-                </div>
-                <div
-                  style={{
-                    padding: "16px",
-                    border: "1px solid #E2E8F0",
-                    borderRadius: "10px",
-                    marginBottom: "14px",
-                  }}
-                >
-                  <h4
-                    style={{
-                      fontSize: "13px",
-                      fontWeight: 700,
-                      color: "#0F2A4A",
-                      margin: "0 0 12px",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    Statement of Service
-                  </h4>
-                  <textarea
-                    value={editingTemplate.statementOfService || ""}
-                    onChange={(e) =>
-                      setEditingTemplate((p) =>
-                        p ? { ...p, statementOfService: e.target.value } : p,
-                      )
-                    }
-                    rows={5}
-                    placeholder="Enter your statement of service..."
-                    style={{
-                      ...inp,
-                      height: "auto",
-                      padding: "10px 12px",
-                      resize: "vertical",
-                      lineHeight: "1.6",
-                    }}
-                  />
-                </div>
-                <div
-                  style={{
-                    padding: "16px",
-                    border: "1px solid #E2E8F0",
-                    borderRadius: "10px",
-                    marginBottom: "14px",
-                  }}
-                >
-                  <h4
-                    style={{
-                      fontSize: "13px",
-                      fontWeight: 700,
-                      color: "#0F2A4A",
-                      margin: "0 0 12px",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    Report Options
-                  </h4>
-                  {[
-                    {
-                      key: "includeDefectGraphic",
-                      label: "Include Common Sewer Defect Graphic",
-                    },
-                    {
-                      key: "showSuggestedMaintenance",
-                      label: 'Enable "Suggested Maintenance" severity option',
-                    },
-                  ].map(({ key, label }) => (
-                    <label
-                      key={key}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "10px",
-                        marginBottom: "10px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={!!(editingTemplate as any)[key]}
+                {[
+                  {
+                    title: "Company Branding",
+                    children: (
+                      <>
+                        <div style={{ marginBottom: "12px" }}>
+                          <label style={lbl}>Company Logo</label>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleLogoUpload}
+                            style={{ fontSize: "13px", color: "#64748B" }}
+                          />
+                          {editingTemplate.companyLogo && (
+                            <img
+                              src={editingTemplate.companyLogo}
+                              alt="Logo"
+                              style={{
+                                maxHeight: "40px",
+                                marginTop: "8px",
+                                display: "block",
+                              }}
+                            />
+                          )}
+                        </div>
+                        <div style={{ marginBottom: "12px" }}>
+                          <label style={lbl}>Company Name</label>
+                          <input
+                            value={editingTemplate.companyName || ""}
+                            onChange={(e) =>
+                              setEditingTemplate((p) =>
+                                p ? { ...p, companyName: e.target.value } : p,
+                              )
+                            }
+                            style={inp}
+                          />
+                        </div>
+                        <div>
+                          <label style={lbl}>Tagline</label>
+                          <input
+                            value={editingTemplate.companyTagline || ""}
+                            onChange={(e) =>
+                              setEditingTemplate((p) =>
+                                p
+                                  ? { ...p, companyTagline: e.target.value }
+                                  : p,
+                              )
+                            }
+                            style={inp}
+                          />
+                        </div>
+                      </>
+                    ),
+                  },
+                  {
+                    title: "Statement of Service",
+                    children: (
+                      <textarea
+                        value={editingTemplate.statementOfService || ""}
                         onChange={(e) =>
                           setEditingTemplate((p) =>
-                            p ? { ...p, [key]: e.target.checked } : p,
+                            p
+                              ? { ...p, statementOfService: e.target.value }
+                              : p,
                           )
                         }
+                        rows={4}
                         style={{
-                          width: "16px",
-                          height: "16px",
-                          accentColor: "#0F2A4A",
+                          ...inp,
+                          height: "auto",
+                          padding: "10px 12px",
+                          resize: "vertical",
+                          lineHeight: "1.6",
                         }}
                       />
-                      <span style={{ fontSize: "13px", color: "#374151" }}>
-                        {label}
-                      </span>
-                    </label>
-                  ))}
-                </div>
+                    ),
+                  },
+                  {
+                    title: "Report Options",
+                    children: (
+                      <>
+                        {[
+                          {
+                            key: "includeDefectGraphic",
+                            label: "Include Common Sewer Defect Graphic",
+                          },
+                          {
+                            key: "showSuggestedMaintenance",
+                            label: 'Enable "Suggested Maintenance" severity',
+                          },
+                        ].map(({ key, label }) => (
+                          <label
+                            key={key}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "10px",
+                              marginBottom: "10px",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={!!(editingTemplate as any)[key]}
+                              onChange={(e) =>
+                                setEditingTemplate((p) =>
+                                  p ? { ...p, [key]: e.target.checked } : p,
+                                )
+                              }
+                              style={{
+                                width: "16px",
+                                height: "16px",
+                                accentColor: "#0F2A4A",
+                              }}
+                            />
+                            <span
+                              style={{ fontSize: "13px", color: "#374151" }}
+                            >
+                              {label}
+                            </span>
+                          </label>
+                        ))}
+                      </>
+                    ),
+                  },
+                ].map(({ title, children }) => (
+                  <div
+                    key={title}
+                    style={{
+                      padding: "14px",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: "10px",
+                      marginBottom: "14px",
+                    }}
+                  >
+                    <h4
+                      style={{
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        color: "#0F2A4A",
+                        margin: "0 0 12px",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {title}
+                    </h4>
+                    {children}
+                  </div>
+                ))}
                 <div
                   style={{
-                    padding: "16px",
+                    padding: "14px",
                     border: "1px solid #E2E8F0",
                     borderRadius: "10px",
                     marginBottom: "14px",
@@ -972,8 +1050,7 @@ export default function DashboardPage() {
                       marginBottom: "14px",
                     }}
                   >
-                    These appear in the General Notes tab of reports using this
-                    template.
+                    Appear in the General Notes tab.
                   </p>
                   {(editingTemplate.customDropdowns || []).map((dd, i) => (
                     <div
@@ -1101,13 +1178,13 @@ export default function DashboardPage() {
                       color: "#fff",
                       border: "none",
                       borderRadius: "8px",
-                      padding: "8px 16px",
+                      padding: "8px 14px",
                       fontSize: "13px",
                       fontWeight: 700,
                       cursor: "pointer",
                     }}
                   >
-                    + New Template
+                    + New
                   </button>
                 </div>
                 {templates.length === 0 ? (
@@ -1132,15 +1209,6 @@ export default function DashboardPage() {
                     >
                       No templates yet
                     </div>
-                    <div
-                      style={{
-                        fontSize: "13px",
-                        color: "#94A3B8",
-                        marginBottom: "16px",
-                      }}
-                    >
-                      Create a template to customize your reports
-                    </div>
                     <button
                       onClick={handleNewTemplate}
                       style={{
@@ -1152,6 +1220,7 @@ export default function DashboardPage() {
                         fontSize: "13px",
                         fontWeight: 600,
                         cursor: "pointer",
+                        marginTop: "8px",
                       }}
                     >
                       Create Template
@@ -1161,7 +1230,7 @@ export default function DashboardPage() {
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "repeat(2, 1fr)",
+                      gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)",
                       gap: "14px",
                     }}
                   >
@@ -1205,30 +1274,6 @@ export default function DashboardPage() {
                           }}
                         >
                           {t.companyName}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: "11px",
-                            color: "#64748B",
-                            marginBottom: "12px",
-                          }}
-                        >
-                          {t.includeDefectGraphic && (
-                            <span style={{ marginRight: "8px" }}>
-                              ✓ Defect Graphic
-                            </span>
-                          )}
-                          {t.showSuggestedMaintenance && (
-                            <span style={{ marginRight: "8px" }}>
-                              ✓ Suggested Maintenance
-                            </span>
-                          )}
-                          {t.customDropdowns?.length > 0 && (
-                            <span>
-                              ✓ {t.customDropdowns.length} Custom Dropdown
-                              {t.customDropdowns.length > 1 ? "s" : ""}
-                            </span>
-                          )}
                         </div>
                         <div style={{ display: "flex", gap: "8px" }}>
                           <button
@@ -1277,7 +1322,7 @@ export default function DashboardPage() {
 
         {/* SETTINGS TAB */}
         {activeTab === "settings" && (
-          <div style={{ padding: "20px" }}>
+          <div style={{ padding: isMobile ? "12px" : "20px" }}>
             <div
               style={{
                 display: "flex",
@@ -1318,18 +1363,25 @@ export default function DashboardPage() {
                     color: "#fff",
                     border: "none",
                     borderRadius: "8px",
-                    padding: "8px 18px",
+                    padding: "8px 16px",
                     fontSize: "13px",
                     fontWeight: 700,
                     cursor: "pointer",
                   }}
                 >
-                  {settingsSaving ? "Saving..." : "Save Changes"}
+                  {settingsSaving ? "Saving..." : "Save"}
                 </button>
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: "6px", marginBottom: "20px" }}>
+            <div
+              style={{
+                display: "flex",
+                gap: "6px",
+                marginBottom: "20px",
+                overflowX: "auto",
+              }}
+            >
               <button
                 style={subTabBtn(settingsTab === "account")}
                 onClick={() => setSettingsTab("account")}
@@ -1373,7 +1425,7 @@ export default function DashboardPage() {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
+                    gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
                     gap: "14px",
                   }}
                 >
@@ -1463,7 +1515,7 @@ export default function DashboardPage() {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
+                    gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
                     gap: "14px",
                   }}
                 >
@@ -1496,7 +1548,7 @@ export default function DashboardPage() {
                       />
                     </div>
                   ))}
-                  <div style={{ gridColumn: "1 / -1" }}>
+                  <div style={{ gridColumn: isMobile ? "1" : "1 / -1" }}>
                     <label style={lbl}>Company Address</label>
                     <input
                       value={settings.companyAddress}
@@ -1560,9 +1612,8 @@ export default function DashboardPage() {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1fr 1fr 1fr",
+                    gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr",
                     gap: "12px",
-                    marginBottom: "16px",
                   }}
                 >
                   {[
