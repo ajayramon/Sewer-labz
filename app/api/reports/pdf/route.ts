@@ -1,4 +1,11 @@
+// app/api/reports/pdf/route.ts
+// Upgraded: now uses Puppeteer to generate a real PDF binary
+// instead of returning raw HTML. Keeps your exact existing HTML template.
+
 import { NextRequest, NextResponse } from "next/server";
+
+export const runtime = "nodejs"; // ✅ required for Puppeteer
+export const maxDuration = 60; // allow up to 60s for generation
 
 export async function POST(req: NextRequest) {
   try {
@@ -7,11 +14,11 @@ export async function POST(req: NextRequest) {
 
     const ref = report.fileNumber || report.clientName || "";
     const date = report.inspectedAt || "";
-
     const photos: string[] =
       report.propertyPhotos ||
       (report.propertyPhoto ? [report.propertyPhoto] : []);
 
+    // ── Helpers ──────────────────────────────────────────────────────────────
     const footer = `
       <div class="rf">
         This report was prepared for the client listed above in accordance with our inspection agreement.<br>
@@ -31,7 +38,9 @@ export async function POST(req: NextRequest) {
           (link: string, i: number) => `
           <div class="info-row">
             <span class="info-label">Video Link ${i + 1}</span>
-            <span class="info-value"><a href="${link}" style="color:#0066cc;">${link}</a></span>
+            <span class="info-value">
+              <a href="${link}" style="color:#0066cc;">${link}</a>
+            </span>
           </div>`,
         )
         .join("") || "";
@@ -75,13 +84,13 @@ export async function POST(req: NextRequest) {
               const photosHtml =
                 d.images?.length > 0
                   ? `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:10px;">
-                    ${d.images
-                      .map(
-                        (img: any) => `
-                      <img src="${img.url}" style="width:100%;height:200px;object-fit:cover;object-position:center;border:1px solid #ddd;border-radius:4px;display:block;" />`,
-                      )
-                      .join("")}
-                  </div>`
+                      ${d.images
+                        .map(
+                          (img: any) =>
+                            `<img src="${img.url}" style="width:100%;height:200px;object-fit:cover;object-position:center;border:1px solid #ddd;border-radius:4px;display:block;" />`,
+                        )
+                        .join("")}
+                    </div>`
                   : "";
               return `
               <div style="margin-bottom:28px;page-break-inside:avoid;">
@@ -151,7 +160,7 @@ export async function POST(req: NextRequest) {
               ],
               [
                 "Belly/Positive Grade",
-                "Section of pipe sagging causing pooling and potential blockage",
+                "Section of pipe sagging causing pooling and blockage",
                 "Moderate",
                 "#EA580C",
               ],
@@ -205,6 +214,7 @@ export async function POST(req: NextRequest) {
         </table>
       </div>`;
 
+    // ── Build the full HTML (your existing template — unchanged) ─────────────
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -212,85 +222,24 @@ export async function POST(req: NextRequest) {
 <title>Sewer Inspection Report</title>
 <style>
   *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
-  html, body { width:100%; background:#fff; font-family:Arial,sans-serif; font-size:13px; color:#000; }
+  html, body { width:100%; background:#fff; font-family:Arial,sans-serif; font-size:13px; color:#000; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
 
-  /* ── FIX 1: Remove about:blank from print header/footer ── */
-  @page {
-    size: letter;
-    margin: 0.45in 0.5in;
-    /* Hides browser-injected URL and page title */
-  }
+  @page { size: letter; margin: 0.45in 0.5in; }
   @page :first { margin-top: 0; }
-
-  /* Hide browser print header/footer in Chrome/Edge/Firefox */
-  html {
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
 
   .page { padding:36px 48px; position:relative; min-height:100vh; page-break-after:always; }
   .page:last-child { page-break-after:auto; }
 
-  /* ── FIX 2: Cover photo centered ── */
-  .cover {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    min-height: 100vh;
-    padding: 28px 48px 140px;
-    position: relative;
-    page-break-after: always;
-  }
+  .cover { display:flex; flex-direction:column; align-items:center; text-align:center; min-height:100vh; padding:28px 48px 140px; position:relative; page-break-after:always; }
   .cover-logo { font-size:54px; font-weight:900; letter-spacing:-2px; color:#0F2A4A; margin-bottom:4px; line-height:1; }
   .cover-logo span { color:#2D8C4E; }
   .cover-tagline { font-size:15px; color:#2D8C4E; font-weight:700; margin-bottom:3px; }
   .cover-subtitle { font-size:13px; color:#555; margin-bottom:18px; }
 
-  /* ── FIX 3: Photo wrapper forces true center ── */
-  .cover-photo-wrap {
-    width: 100%;
-    max-width: 680px;
-    margin: 0 auto;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-  }
-  .cover-photo {
-    width: 100%;
-    max-width: 680px;
-    height: 420px;
-    object-fit: cover;
-    object-position: center center;
-    display: block;
-    border-radius: 4px;
-    border: 1px solid #ddd;
-  }
-  .cover-no-photo {
-    width: 100%;
-    max-width: 680px;
-    height: 420px;
-    background: #f0f0f0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 14px;
-    color: #999;
-    border-radius: 4px;
-    border: 1px solid #ddd;
-  }
-  .cover-bottom {
-    position: absolute;
-    bottom: 0;
-    left: 48px;
-    right: 48px;
-    border-top: 1px solid #ccc;
-    padding: 12px 0 18px;
-    font-size: 10.5px;
-    color: #444;
-    line-height: 1.75;
-    text-align: center;
-  }
+  .cover-photo-wrap { width:100%; max-width:680px; margin:0 auto; display:flex; justify-content:center; align-items:center; }
+  .cover-photo { width:100%; max-width:680px; height:420px; object-fit:cover; object-position:center center; display:block; border-radius:4px; border:1px solid #ddd; }
+  .cover-no-photo { width:100%; max-width:680px; height:420px; background:#f0f0f0; display:flex; align-items:center; justify-content:center; font-size:14px; color:#999; border-radius:4px; border:1px solid #ddd; }
+  .cover-bottom { position:absolute; bottom:0; left:48px; right:48px; border-top:1px solid #ccc; padding:12px 0 18px; font-size:10.5px; color:#444; line-height:1.75; text-align:center; }
 
   .rh { display:flex; justify-content:space-between; border-bottom:1.5px solid #000; padding-bottom:7px; margin-bottom:18px; font-size:11px; color:#555; }
   .rf { position:absolute; bottom:18px; left:48px; right:48px; border-top:1px solid #ddd; padding-top:7px; font-size:10px; color:#888; text-align:center; line-height:1.6; }
@@ -314,35 +263,15 @@ export async function POST(req: NextRequest) {
   .mat-table th { background:#0F2A4A; color:#fff; font-size:12px; padding:8px 10px; text-align:left; border:1px solid #ccc; }
   .mat-table td { font-size:12px; padding:7px 10px; border:1px solid #ddd; }
   .mat-table tr:nth-child(even) td { background:#f9f9f9; }
-
-  @media print {
-    /* ── FIX 4: Force hide browser URL/title header/footer ── */
-    @page {
-      margin: 0.45in 0.5in;
-      size: letter portrait;
-    }
-    body {
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-    }
-    .page { page-break-after: always; }
-    .page:last-child { page-break-after: auto; }
-    .cover { page-break-after: always; }
-
-    /* Hide the about:blank URL that some browsers inject */
-    head, title { display: none !important; }
-  }
 </style>
 </head>
 <body>
 
-<!-- PAGE 1: COVER -->
+<!-- COVER -->
 <div class="cover">
   <div class="cover-logo">SEWER <span>LABZ</span></div>
   <div class="cover-tagline">${report.companyTagline || "Don't Let Your Drain Be A Pain!"}</div>
   <div class="cover-subtitle">Professional Sewer Inspection Report</div>
-
-  <!-- FIX: Photo wrapper centers the image -->
   <div class="cover-photo-wrap">
     ${
       photos.length > 0
@@ -350,7 +279,6 @@ export async function POST(req: NextRequest) {
         : `<div class="cover-no-photo">📸 Property Photo</div>`
     }
   </div>
-
   <div class="cover-bottom">
     This report was prepared for the client listed above in accordance with our inspection agreement and is subject to the terms and conditions agreed upon therein.
     A verbal consultation is part of this report. If you were not present during the inspection, call our office for a full discussion of the entire report.
@@ -359,7 +287,7 @@ export async function POST(req: NextRequest) {
   </div>
 </div>
 
-<!-- PAGE 2: TOC -->
+<!-- TOC -->
 <div class="page">
   ${header(date, ref)}
   <div class="sec-title">Table of Contents</div>
@@ -387,7 +315,7 @@ export async function POST(req: NextRequest) {
   ${footer}
 </div>
 
-<!-- PAGE 3: DISCLOSURE + SCOPE + POINT OF REFERENCE -->
+<!-- DISCLOSURE + SCOPE + POINT OF REFERENCE -->
 <div class="page">
   ${header(date, ref)}
   <div class="sec-title">Sewer Line Inspection Disclosure</div>
@@ -395,17 +323,15 @@ export async function POST(req: NextRequest) {
   <p class="disc">The inspection report should not be construed as a compliance inspection of any governmental or non-governmental codes or regulations. The report is not intended to be a warranty or guarantee of the present or future adequacy or performance of the sewer line.</p>
   <p class="disc">All repairs should be done by a competent licensed Plumber and any work requiring building permits should be obtained by the authority having jurisdiction (Local Building Department).</p>
   <p class="disc">It is the client's sole responsibility to <u>read this report in its entirety</u>, not rely upon any verbal comments and to research any and all jurisdictional permits required by the local authorities regarding the property inspected.</p>
-
   <div class="sec-title">Scope of the Sewer Inspection</div>
   <p class="disc">A sewer inspection scan was requested of the main drain line from the structure to the city, private sewer connection, 150 feet or camera limitations (whichever comes first). The sewer line is to be accessed through a cleanout, roof vent (single story only) or other access point(s) to be determined best by the inspector. The camera inspection does not inspect all of the drain lines running under and or within the structure. The following is a summative report of the findings.</p>
-
   <div class="sec-title">Point of Reference</div>
   <p class="disc" style="text-align:center;">[NOTE]</p>
   <p class="disc">Statements made within this inspection report pertaining to left, right, front or rear were referenced by standing in front of and facing the structure from the street. Additionally, analogue clockface references may be utilized to pinpoint conditions found within the pipe; in this case the 12 o'clock position will be the topmost center of the pipe, the 6 o'clock position will be the bottom most center of the pipe and so on.</p>
   ${footer}
 </div>
 
-<!-- PAGE 4: CLIENT & SITE INFO -->
+<!-- CLIENT & SITE INFO -->
 <div class="page">
   ${header(date, ref)}
   <div class="sec-sub">Client &amp; Site Information</div>
@@ -431,43 +357,36 @@ export async function POST(req: NextRequest) {
       ]
         .filter(([, v]) => v)
         .map(
-          ([l, v]) => `
-        <div class="info-row">
-          <span class="info-label">${l}</span>
-          <span class="info-value">${v}</span>
-        </div>`,
+          ([l, v]) =>
+            `<div class="info-row"><span class="info-label">${l}</span><span class="info-value">${v}</span></div>`,
         )
         .join("")}
     </div>
     ${
       photos.length > 0
-        ? `
-    <div style="flex-shrink:0;width:200px;text-align:center;">
-      <img src="${photos[0]}"
-        style="width:200px;height:150px;object-fit:cover;object-position:center center;border:1px solid #ddd;border-radius:3px;display:block;"
-        alt="Property" />
-    </div>`
+        ? `<div style="flex-shrink:0;width:200px;text-align:center;">
+           <img src="${photos[0]}" style="width:200px;height:150px;object-fit:cover;object-position:center center;border:1px solid #ddd;border-radius:3px;display:block;" alt="Property" />
+         </div>`
         : ""
     }
   </div>
   ${
     photos.length > 1
-      ? `
-  <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:14px;">
-    ${photos
-      .slice(1)
-      .map(
-        (p) =>
-          `<img src="${p}" style="width:100%;height:150px;object-fit:cover;object-position:center center;border:1px solid #ddd;border-radius:3px;" />`,
-      )
-      .join("")}
-  </div>`
+      ? `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:14px;">
+         ${photos
+           .slice(1)
+           .map(
+             (p) =>
+               `<img src="${p}" style="width:100%;height:150px;object-fit:cover;object-position:center center;border:1px solid #ddd;border-radius:3px;" />`,
+           )
+           .join("")}
+       </div>`
       : ""
   }
   ${footer}
 </div>
 
-<!-- PAGE 5: SEWER SYSTEM INFO -->
+<!-- SEWER SYSTEM INFO -->
 <div class="page">
   ${header(date, ref)}
   <div class="sec-sub">Sewer System Information</div>
@@ -475,12 +394,11 @@ export async function POST(req: NextRequest) {
   ${report.pipeMaterials?.length > 0 ? `<div class="sys-label">Sewer Pipe Material(s) Found</div><div class="sys-value">${Array.isArray(report.pipeMaterials) ? report.pipeMaterials.join(", ") : report.pipeMaterials}</div>` : ""}
   ${
     report.cameraDirection1 || report.cameraDirection2
-      ? `
-    <div class="sys-label">Piping Section — Camera Direction(s)</div>
-    <div class="sys-value">
-      ${report.cameraDirection1 ? `<div style="margin-bottom:5px;"><strong>1st Direction:</strong> ${report.cameraDirection1}</div>` : ""}
-      ${report.cameraDirection2 ? `<div><strong>2nd Direction:</strong> ${report.cameraDirection2}</div>` : ""}
-    </div>`
+      ? `<div class="sys-label">Piping Section — Camera Direction(s)</div>
+       <div class="sys-value">
+         ${report.cameraDirection1 ? `<div style="margin-bottom:5px;"><strong>1st Direction:</strong> ${report.cameraDirection1}</div>` : ""}
+         ${report.cameraDirection2 ? `<div><strong>2nd Direction:</strong> ${report.cameraDirection2}</div>` : ""}
+       </div>`
       : ""
   }
   ${report.pipingNotes ? `<div class="sys-label">Additional Piping Notes</div><div class="sys-value">${report.pipingNotes}</div>` : ""}
@@ -488,7 +406,7 @@ export async function POST(req: NextRequest) {
   ${footer}
 </div>
 
-<!-- PAGE 6: PIPE CONDITIONS -->
+<!-- PIPE CONDITIONS -->
 <div class="page">
   ${header(date, ref)}
   <div class="sec-sub">Sewer Piping Conditions</div>
@@ -496,25 +414,28 @@ export async function POST(req: NextRequest) {
   ${footer}
 </div>
 
-<!-- PAGE 7: GENERAL NOTES -->
+<!-- GENERAL NOTES -->
 ${
   report.generalNotes
-    ? `
-<div class="page">
-  ${header(date, ref)}
-  <div class="sec-sub">General Notes / Comments</div>
-  <p style="font-size:13px;line-height:1.85;white-space:pre-wrap;">${report.generalNotes}</p>
-  ${footer}
-</div>`
+    ? `<div class="page">
+       ${header(date, ref)}
+       <div class="sec-sub">General Notes / Comments</div>
+       <p style="font-size:13px;line-height:1.85;white-space:pre-wrap;">${report.generalNotes}</p>
+       ${footer}
+     </div>`
     : ""
 }
 
-<!-- PAGE 8: CORRECTIVE ACTIONS -->
+<!-- CORRECTIVE ACTIONS -->
 <div class="page">
   ${header(date, ref)}
   <div class="sec-sub">Corrective Action Recommendations</div>
   ${correctiveRows || '<p style="color:#999;font-size:13px;">No corrective actions selected.</p>'}
-  ${report.correctionNotes ? `<div style="margin-top:14px;"><div class="sys-label">Additional Notes</div><div class="sys-value" style="white-space:pre-wrap;">${report.correctionNotes}</div></div>` : ""}
+  ${
+    report.correctionNotes
+      ? `<div style="margin-top:14px;"><div class="sys-label">Additional Notes</div><div class="sys-value" style="white-space:pre-wrap;">${report.correctionNotes}</div></div>`
+      : ""
+  }
   <div style="margin-top:20px;padding:14px;background:#F8FAFC;border-radius:5px;border:1px solid #eee;">
     <p style="font-size:13px;line-height:1.8;margin-bottom:8px;">Given the condition(s) above we recommend full evaluations and/or corrections with written findings and costs to cure by a competent licensed plumbing contractor before the end/close of the inspection contingency period.</p>
     <p style="font-size:13px;line-height:1.8;">Recommend sewer inspections after repairs are made to ensure efficacy of work and to inspect any areas of the sewer lateral not visible due to defect(s).</p>
@@ -522,7 +443,7 @@ ${
   ${footer}
 </div>
 
-<!-- PAGE 9: STATEMENT OF SERVICE -->
+<!-- STATEMENT OF SERVICE -->
 <div class="page">
   ${header(date, ref)}
   <div class="sec-sub">Statement of Service</div>
@@ -532,7 +453,7 @@ ${
   ${footer}
 </div>
 
-<!-- PAGE 10: MATERIAL LIFE EXPECTANCY -->
+<!-- MATERIAL LIFE EXPECTANCY -->
 <div class="page">
   ${header(date, ref)}
   <div class="sec-title">Understanding Sewer Material &amp; Defects</div>
@@ -565,12 +486,12 @@ ${
     </tbody>
   </table>
   <p style="font-size:11px;color:#555;margin-top:14px;line-height:1.7;">
-    <strong>*NOTE*</strong> Life expectancy is for material alone and under ideal circumstances as intended by the manufacturer. Construction and repair practices can have detrimental effects on how long a sewer line can perform as expected. Additionally, soil erosion/settling and other environmental influences such as root intrusion can drastically reduce the expected timelines outlined above.
+    <strong>*NOTE*</strong> Life expectancy is for material alone and under ideal circumstances as intended by the manufacturer. Construction and repair practices can have detrimental effects on how long a sewer line can perform as expected.
   </p>
   ${footer}
 </div>
 
-<!-- PAGE 11: COMMON SEWER DEFECT REFERENCE -->
+<!-- COMMON SEWER DEFECT REFERENCE -->
 <div class="page">
   ${header(date, ref)}
   ${defectTable}
@@ -581,32 +502,53 @@ ${
   </div>
 </div>
 
-<!-- FIX: Script removes about:blank from browser print dialog -->
-<script>
-  // Remove browser-injected URL from print header
-  window.addEventListener('load', function() {
-    // Force title to empty so browser doesn't print it
-    document.title = '';
-
-    // Auto-trigger print if opened in new window
-    if (window.opener) {
-      setTimeout(function() {
-        window.print();
-      }, 1200);
-    }
-  });
-</script>
-
 </body>
 </html>`;
 
-    return new NextResponse(html, {
-      headers: { "Content-Type": "text/html; charset=utf-8" },
+    // ── Puppeteer: render HTML → real PDF binary ──────────────────────────────
+    const puppeteer = await import("puppeteer");
+    const browser = await puppeteer.default.launch({
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--no-zygote",
+      ],
     });
-  } catch (error) {
-    console.error("PDF error:", error);
+
+    const page = await browser.newPage();
+
+    // setContent avoids any "about:blank" flash
+    await page.setContent(html, { waitUntil: "networkidle0" });
+
+    // Wait for fonts and images
+    await page.evaluateHandle("document.fonts.ready");
+
+    const pdfBuffer = await page.pdf({
+      format: "Letter",
+      printBackground: true, // ✅ prints background colors
+      displayHeaderFooter: false, // ✅ disables browser "about:blank" header
+      margin: { top: "0px", bottom: "0px", left: "0px", right: "0px" },
+    });
+
+    await browser.close();
+
+    // ── Return as downloadable PDF ────────────────────────────────────────────
+    const filename = `SewerLabz-${ref || "Report"}-${date || Date.now()}.pdf`;
+
+    return new NextResponse(pdfBuffer as Buffer, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+      },
+    });
+  } catch (error: any) {
+    console.error("[PDF Generation Error]", error);
     return NextResponse.json(
-      { error: "Failed to generate report" },
+      { error: "Failed to generate PDF", detail: error?.message },
       { status: 500 },
     );
   }

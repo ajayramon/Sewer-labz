@@ -14,9 +14,10 @@ export default function ViewReportPage() {
   const [defects, setDefects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [pdfError, setPdfError] = useState("");
   const [uid, setUid] = useState<string | null>(null);
 
-  // Get Firebase UID
+  // ── Auth ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       if (u) setUid(u.uid);
@@ -25,7 +26,7 @@ export default function ViewReportPage() {
     return () => unsub();
   }, []);
 
-  // Load report once we have UID
+  // ── Load report ───────────────────────────────────────────────────────────
   useEffect(() => {
     if (!id || !uid) return;
     loadReport(uid);
@@ -34,19 +35,15 @@ export default function ViewReportPage() {
   const loadReport = async (userId: string) => {
     setLoading(true);
     try {
-      // Try Firestore first
       const res = await fetch(`/api/reports/${id}`, {
         headers: { "x-user-id": userId },
       });
-
       if (res.ok) {
         const data = await res.json();
         setReport(data.report || data);
         setDefects(data.defects || []);
-        // Keep localStorage in sync
         localStorage.setItem(`report_${id}`, JSON.stringify(data));
       } else {
-        // Fall back to localStorage
         const local = localStorage.getItem(`report_${id}`);
         if (local) {
           const data = JSON.parse(local);
@@ -55,7 +52,6 @@ export default function ViewReportPage() {
         }
       }
     } catch {
-      // Fall back to localStorage
       const local = localStorage.getItem(`report_${id}`);
       if (local) {
         const data = JSON.parse(local);
@@ -67,6 +63,7 @@ export default function ViewReportPage() {
     }
   };
 
+  // ── Edit ──────────────────────────────────────────────────────────────────
   const handleEdit = async () => {
     try {
       const res = await fetch(`/api/reports/${id}`, {
@@ -86,10 +83,13 @@ export default function ViewReportPage() {
     router.push(`/reports/new?edit=${id}`);
   };
 
+  // ── PDF — now downloads a real PDF via Puppeteer ──────────────────────────
   const handlePDF = async () => {
     setGenerating(true);
+    setPdfError("");
+
     try {
-      // Try Firestore first, fall back to localStorage
+      // Get latest data — Firestore first, localStorage fallback
       let data: any = null;
       try {
         const res = await fetch(`/api/reports/${id}`, {
@@ -103,26 +103,39 @@ export default function ViewReportPage() {
         data = local ? JSON.parse(local) : { report, defects };
       }
 
+      // ✅ POST to Puppeteer PDF route — returns real PDF binary
       const res = await fetch("/api/reports/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-      const html = await res.text();
-      const win = window.open("", "_blank");
-      if (win) {
-        win.document.open();
-        win.document.write(html);
-        win.document.close();
-        setTimeout(() => win.print(), 2500);
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || `Server error ${res.status}`);
       }
-    } catch {
-      alert("Failed to generate PDF.");
+
+      // ✅ Stream PDF blob → trigger browser download
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const ref = report?.fileNumber || report?.clientName || "Report";
+      const date = report?.inspectedAt || "";
+      a.href = url;
+      a.download = `SewerLabz-${ref}-${date}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error("[PDF]", err);
+      setPdfError(err?.message || "PDF generation failed. Please try again.");
     } finally {
       setGenerating(false);
     }
   };
 
+  // ── Severity colors ───────────────────────────────────────────────────────
   const severityColor: Record<string, string> = {
     "No Defect": "#16A34A",
     Minor: "#D97706",
@@ -131,6 +144,7 @@ export default function ViewReportPage() {
     "Suggested Maintenance": "#2563EB",
   };
 
+  // ── Loading / not found states ────────────────────────────────────────────
   if (loading)
     return (
       <div
@@ -219,7 +233,7 @@ export default function ViewReportPage() {
         minHeight: "100vh",
       }}
     >
-      {/* Top bar */}
+      {/* ── Top bar ──────────────────────────────────────────────────────── */}
       <div
         style={{
           background: "#fff",
@@ -263,41 +277,74 @@ export default function ViewReportPage() {
             {report.status || "DRAFT"}
           </span>
         </div>
-        <div style={{ display: "flex", gap: "10px" }}>
-          <button
-            onClick={handleEdit}
-            style={{
-              background: "#0F2A4A",
-              color: "#fff",
-              border: "none",
-              borderRadius: "8px",
-              padding: "8px 18px",
-              fontSize: "13px",
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            ✏️ Edit Report
-          </button>
-          <button
-            onClick={handlePDF}
-            disabled={generating}
-            style={{
-              background: generating ? "#94A3B8" : "#2D8C4E",
-              color: "#fff",
-              border: "none",
-              borderRadius: "8px",
-              padding: "8px 18px",
-              fontSize: "13px",
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            {generating ? "Generating..." : "📄 Generate PDF"}
-          </button>
+
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
+            gap: "4px",
+          }}
+        >
+          <div style={{ display: "flex", gap: "10px" }}>
+            {/* Edit button */}
+            <button
+              onClick={handleEdit}
+              style={{
+                background: "#0F2A4A",
+                color: "#fff",
+                border: "none",
+                borderRadius: "8px",
+                padding: "8px 18px",
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              ✏️ Edit Report
+            </button>
+
+            {/* ✅ PDF download button — now downloads real PDF */}
+            <button
+              onClick={handlePDF}
+              disabled={generating}
+              style={{
+                background: generating ? "#94A3B8" : "#2D8C4E",
+                color: "#fff",
+                border: "none",
+                borderRadius: "8px",
+                padding: "8px 18px",
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor: generating ? "not-allowed" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                transition: "background 0.2s",
+              }}
+            >
+              {generating ? <Spinner /> : "📄"}
+              {generating ? "Generating PDF…" : "Download PDF"}
+            </button>
+          </div>
+
+          {/* Error message under buttons */}
+          {pdfError && (
+            <span
+              style={{
+                fontSize: "11px",
+                color: "#DC2626",
+                maxWidth: "320px",
+                textAlign: "right",
+              }}
+            >
+              ⚠ {pdfError}
+            </span>
+          )}
         </div>
       </div>
 
+      {/* ── Content ──────────────────────────────────────────────────────── */}
       <div style={{ padding: "24px", maxWidth: "1000px", margin: "0 auto" }}>
         {/* Client & Site Info */}
         <div style={card}>
@@ -353,7 +400,7 @@ export default function ViewReportPage() {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(3, 1fr)",
+                  gridTemplateColumns: "repeat(3,1fr)",
                   gap: "8px",
                   marginTop: "8px",
                 }}
@@ -551,7 +598,7 @@ export default function ViewReportPage() {
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "repeat(3, 1fr)",
+                      gridTemplateColumns: "repeat(3,1fr)",
                       gap: "8px",
                       marginTop: "8px",
                     }}
@@ -676,5 +723,24 @@ export default function ViewReportPage() {
           )}
       </div>
     </div>
+  );
+}
+
+// ── Spinner icon ──────────────────────────────────────────────────────────────
+function Spinner() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      style={{ animation: "sl-spin 0.8s linear infinite", flexShrink: 0 }}
+    >
+      <style>{`@keyframes sl-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
+      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+    </svg>
   );
 }
