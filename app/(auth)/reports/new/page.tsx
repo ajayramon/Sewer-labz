@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/app/Lib/firebase";
@@ -150,6 +150,191 @@ const severityConfig: Record<string, { bg: string; color: string }> = {
   "Suggested Maintenance": { bg: "#EFF6FF", color: "#2563EB" },
 };
 
+const narrativeLibrary: Record<string, { label: string; text: string }[]> = {
+  "Root Intrusion": [
+    {
+      label: "Minor",
+      text: "Minor root intrusion observed at joint. Roots occupy approximately 10-25% of pipe diameter. No immediate obstruction noted. Recommend periodic hydro-jetting to prevent escalation.",
+    },
+    {
+      label: "Moderate",
+      text: "Moderate root intrusion observed. Root mass occupies approximately 25-50% of pipe cross-section causing partial flow restriction. Hydro-jetting with root cutting nozzle recommended prior to close of escrow.",
+    },
+    {
+      label: "Major",
+      text: "Significant root intrusion observed. Root mass occupies more than 50% of pipe cross-section causing substantial obstruction. Immediate hydro-jetting, root treatment, and structural assessment required. Consult licensed plumber prior to close of escrow.",
+    },
+    {
+      label: "Cannot Determine",
+      text: "Root intrusion observed; unable to determine origin. Cable or hydro jet recommended to cut and flush roots. Re-inspection recommended after cleaning to assess pipe integrity.",
+    },
+  ],
+  "Offset Joint": [
+    {
+      label: "Minor",
+      text: "Minor pipe offset observed at joint. Offset does not currently obstruct flow but should be monitored. Evaluation by licensed plumber recommended during any future plumbing work.",
+    },
+    {
+      label: "Moderate",
+      text: "Moderate pipe offset observed. Misalignment is causing debris accumulation and may restrict flow over time. Likely caused by soil settlement or root pressure. Evaluation by licensed plumber recommended.",
+    },
+    {
+      label: "Major",
+      text: "Significant pipe offset observed. Severe misalignment is restricting flow and causing debris accumulation. Repair or CIPP spot-lining required. Licensed plumber or sewer contractor must be consulted prior to close of escrow.",
+    },
+  ],
+  "Circumferential Crack": [
+    {
+      label: "Minor",
+      text: "Minor circumferential crack observed. Crack does not extend through full pipe wall at this time. Monitor and re-inspect within 12 months. Licensed plumber evaluation recommended.",
+    },
+    {
+      label: "Major",
+      text: "Circumferential crack observed extending around pipe. Crack allows groundwater infiltration and root intrusion. Structural integrity compromised. Spot repair or pipe replacement required prior to close of escrow.",
+    },
+  ],
+  "Longitudinal Crack": [
+    {
+      label: "Minor",
+      text: "Minor longitudinal crack observed running along pipe length. No significant infiltration noted at this time. Licensed plumber evaluation recommended.",
+    },
+    {
+      label: "Major",
+      text: "Significant longitudinal crack observed. Crack extends along pipe allowing infiltration and potential pipe collapse. Immediate evaluation and repair by licensed plumber required.",
+    },
+  ],
+  "Erosion At Joint": [
+    {
+      label: "Moderate",
+      text: "Erosion observed at pipe joint. Material worn away at connection point, compromising joint integrity. Water infiltration possible. Licensed plumber evaluation recommended prior to close of escrow.",
+    },
+    {
+      label: "Major",
+      text: "Significant erosion observed at joint. Joint integrity is severely compromised with visible material loss. Immediate repair required. Consult licensed plumber prior to close of escrow.",
+    },
+  ],
+  "Debris Within Pipe": [
+    {
+      label: "Minor",
+      text: "Minor debris accumulation observed. Debris occludes less than 25% of pipe diameter. No immediate obstruction. Routine hydro-jetting recommended as preventive maintenance.",
+    },
+    {
+      label: "Moderate",
+      text: "Moderate debris/buildup observed at various points throughout pipe. Debris occludes 25-50% of pipe diameter. Hydro-jetting recommended prior to close of escrow to restore full flow capacity.",
+    },
+    {
+      label: "Major",
+      text: "Severe debris accumulation observed. Debris occludes more than 50% of pipe diameter posing immediate blockage risk. Immediate hydro-jetting by licensed plumbing contractor required.",
+    },
+  ],
+  "Deteriorated Pipe Material": [
+    {
+      label: "Moderate",
+      text: "Deterioration of pipe material observed. Pitting and corrosion noted on interior pipe walls reducing structural integrity. Licensed plumber evaluation and long-term replacement planning recommended.",
+    },
+    {
+      label: "Major",
+      text: "Significant pipe deterioration observed. Severe pitting, corrosion, and material breakdown noted. Pipe replacement required. Licensed plumber must be consulted prior to close of escrow.",
+    },
+  ],
+  "Grease Deposit": [
+    {
+      label: "Minor",
+      text: "Minor grease accumulation observed. No immediate obstruction. Recommend routine hydro-jetting and advise client to avoid pouring grease or oils down drains.",
+    },
+    {
+      label: "Moderate",
+      text: "Moderate grease buildup observed restricting flow capacity. Hydro-jetting recommended prior to close of escrow. Client advised to avoid disposing grease or food waste in drains.",
+    },
+    {
+      label: "Major",
+      text: "Significant grease accumulation observed causing substantial flow restriction. Immediate hydro-jetting by licensed plumber required. Risk of complete blockage if untreated.",
+    },
+  ],
+  "Broken Pipe": [
+    {
+      label: "Major",
+      text: "Broken pipe observed with fractured and/or displaced sections. Pipe integrity is compromised. Immediate excavation and replacement required. Licensed plumber must be consulted prior to close of escrow.",
+    },
+  ],
+  "Belly/Positive Grade": [
+    {
+      label: "Moderate",
+      text: "Pipe sag/belly observed. Low point in pipe allows solids and debris to accumulate causing recurring blockages and slow drainage. Evaluation by licensed plumber recommended. Repair may require excavation.",
+    },
+    {
+      label: "Major",
+      text: "Significant pipe belly observed causing standing water and solid accumulation. Recurring blockages likely without correction. Excavation and pipe re-grading required. Consult licensed plumber prior to close of escrow.",
+    },
+  ],
+  "Scale Buildup": [
+    {
+      label: "Minor",
+      text: "Minor scale deposits observed on interior pipe walls. Deposits occupy less than 25% of pipe diameter. Routine descaling recommended as preventive maintenance.",
+    },
+    {
+      label: "Moderate",
+      text: "Moderate scaling observed throughout pipe section. Scale deposits occupy 25-50% of pipe diameter and may impact flow. Descaling by professional licensed plumber strongly recommended prior to close of escrow.",
+    },
+    {
+      label: "Major",
+      text: "Severe scaling observed. Deposits occupy more than 50% of pipe diameter significantly restricting flow. Immediate descaling or pipe replacement required. Licensed plumber must be consulted.",
+    },
+  ],
+  Infiltration: [
+    {
+      label: "Moderate",
+      text: "Groundwater infiltration observed entering pipe through crack or joint. Infiltration increases flow volume and may carry soil into pipe. Repair of entry point recommended by licensed plumber.",
+    },
+    {
+      label: "Major",
+      text: "Significant groundwater infiltration observed. Large volume of water entering pipe compromising system capacity and potentially causing soil voids. Immediate repair required prior to close of escrow.",
+    },
+  ],
+  Exfiltration: [
+    {
+      label: "Major",
+      text: "Sewage exfiltration observed — wastewater leaking from pipe into surrounding soil. This is a public health concern and environmental violation. Immediate repair required. Licensed plumber must be consulted prior to close of escrow.",
+    },
+  ],
+  Collapse: [
+    {
+      label: "Major",
+      text: "Pipe collapse observed. Section of pipe has caved in preventing full inspection beyond this point. This constitutes complete failure of the sewer system. Immediate excavation and replacement required. Licensed plumber must be consulted prior to close of escrow.",
+    },
+  ],
+  "Joints Performing As Designed - No Defect": [
+    {
+      label: "No Defect",
+      text: "Joints observed performing as designed. No infiltration, offset, or deterioration noted at connections. Pipe appears structurally sound at time of inspection.",
+    },
+  ],
+  "Camera Reached Inspection Limit": [
+    {
+      label: "Info",
+      text: "Camera reached maximum inspection distance or obstruction preventing further advancement. Inspection limited to accessible portion of line. Condition of remaining pipe unknown. Additional access point or excavation may be required for full assessment.",
+    },
+  ],
+  "City Connection Reached": [
+    {
+      label: "Info",
+      text: "Camera reached city sewer main connection. Full lateral inspection completed to public sewer system tie-in point. No issues noted at connection.",
+    },
+  ],
+  "Pipe Traversed Material": [
+    {
+      label: "Info",
+      text: "Camera traversed change in pipe material noted during inspection. Transition joint appears intact with no visible defects at time of inspection.",
+    },
+  ],
+  Other: [
+    {
+      label: "Custom",
+      text: "Observation noted during inspection. Please add specific details in the narrative field below.",
+    },
+  ],
+};
+
 export default function ReportBuilder() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -197,7 +382,6 @@ export default function ReportBuilder() {
   const [defects, setDefects] = useState<Defect[]>([]);
   const [dragOver, setDragOver] = useState<string | null>(null);
 
-  // Get Firebase UID
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       if (u) setUid(u.uid);
@@ -206,12 +390,10 @@ export default function ReportBuilder() {
     return () => unsub();
   }, []);
 
-  // Load existing report if editing
   useEffect(() => {
     if (!editId || !uid) return;
     const loadEdit = async () => {
       try {
-        // Try Firestore first
         const res = await fetch(`/api/reports/${editId}`, {
           headers: { "x-user-id": uid },
         });
@@ -228,7 +410,6 @@ export default function ReportBuilder() {
           return;
         }
       } catch {}
-      // Fall back to localStorage
       const local = localStorage.getItem(`report_edit_${editId}`);
       if (local) {
         const data = JSON.parse(local);
@@ -275,7 +456,6 @@ export default function ReportBuilder() {
       });
       if (res.ok) {
         const saved = await res.json();
-        // Keep localStorage in sync
         localStorage.setItem(`report_${saved.id}`, JSON.stringify(payload));
         const existing = JSON.parse(
           localStorage.getItem("sewer_reports") || "[]",
@@ -300,7 +480,6 @@ export default function ReportBuilder() {
     setGenerating(true);
     try {
       const payload = buildPayload();
-      // Auto-save before generating
       if (uid) {
         await fetch("/api/reports", {
           method: "POST",
@@ -348,23 +527,23 @@ export default function ReportBuilder() {
 
   const updateDetail = (k: string, v: string) =>
     setDetails((p) => ({ ...p, [k]: v }));
-  const togglePerson = (person: string) =>
-    setDetails((p) => ({
-      ...p,
-      peoplePresent: p.peoplePresent.includes(person)
-        ? p.peoplePresent.filter((x) => x !== person)
-        : [...p.peoplePresent, person],
+  const togglePerson = (p: string) =>
+    setDetails((d) => ({
+      ...d,
+      peoplePresent: d.peoplePresent.includes(p)
+        ? d.peoplePresent.filter((x) => x !== p)
+        : [...d.peoplePresent, p],
     }));
-  const toggleMaterial = (material: string) =>
-    setDetails((p) => ({
-      ...p,
-      pipeMaterials: p.pipeMaterials.includes(material)
-        ? p.pipeMaterials.filter((m) => m !== material)
-        : [...p.pipeMaterials, material],
+  const toggleMaterial = (m: string) =>
+    setDetails((d) => ({
+      ...d,
+      pipeMaterials: d.pipeMaterials.includes(m)
+        ? d.pipeMaterials.filter((x) => x !== m)
+        : [...d.pipeMaterials, m],
     }));
-  const updateVideoLink = (index: number, value: string) => {
+  const updateVideoLink = (i: number, v: string) => {
     const links = [...details.videoLinks];
-    links[index] = value;
+    links[i] = v;
     setDetails((p) => ({ ...p, videoLinks: links }));
   };
 
@@ -688,7 +867,7 @@ export default function ReportBuilder() {
       </div>
 
       <div style={{ padding: "24px", maxWidth: "1000px", margin: "0 auto" }}>
-        {/* TAB 1 — Client & Site Info */}
+        {/* ── TAB 1: Client & Site Info ── */}
         {activeTab === "details" && (
           <div
             style={{
@@ -904,15 +1083,15 @@ export default function ReportBuilder() {
                 {propertyPhotos.length < 3 && (
                   <div
                     onClick={() => {
-                      const input = document.createElement("input");
-                      input.type = "file";
-                      input.accept = "image/*";
-                      input.multiple = true;
-                      input.onchange = (e) =>
+                      const i = document.createElement("input");
+                      i.type = "file";
+                      i.accept = "image/*";
+                      i.multiple = true;
+                      i.onchange = (e) =>
                         handlePropertyPhotos(
                           (e.target as HTMLInputElement).files,
                         );
-                      input.click();
+                      i.click();
                     }}
                     style={{
                       border: "2px dashed #E2E8F0",
@@ -1032,7 +1211,7 @@ export default function ReportBuilder() {
           </div>
         )}
 
-        {/* TAB 2 — Sewer System Info */}
+        {/* ── TAB 2: Sewer System Info ── */}
         {activeTab === "system" && (
           <div
             style={{
@@ -1215,7 +1394,7 @@ export default function ReportBuilder() {
           </div>
         )}
 
-        {/* TAB 3 — Pipe Conditions */}
+        {/* ── TAB 3: Pipe Conditions ── */}
         {activeTab === "conditions" && (
           <div>
             <div
@@ -1312,6 +1491,7 @@ export default function ReportBuilder() {
                   overflow: "hidden",
                 }}
               >
+                {/* Defect header row */}
                 <div
                   style={{
                     display: "flex",
@@ -1467,14 +1647,87 @@ export default function ReportBuilder() {
 
                 {defect.expanded && (
                   <div style={{ padding: "16px" }}>
+                    {/* ── NARRATIVE LIBRARY ── */}
                     <div style={{ marginBottom: "14px" }}>
                       <label style={lbl}>Detailed Narrative</label>
+
+                      {narrativeLibrary[defect.conditionType] && (
+                        <div style={{ marginBottom: "10px" }}>
+                          <div
+                            style={{
+                              fontSize: "11px",
+                              fontWeight: 600,
+                              color: "#64748B",
+                              textTransform: "uppercase",
+                              letterSpacing: "0.05em",
+                              marginBottom: "6px",
+                            }}
+                          >
+                            ⚡ Quick Fill — click to use:
+                          </div>
+                          <div
+                            style={{
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: "6px",
+                            }}
+                          >
+                            {narrativeLibrary[defect.conditionType].map(
+                              (n, ni) => (
+                                <button
+                                  key={ni}
+                                  onClick={() =>
+                                    updateDefect(defect.id, "narrative", n.text)
+                                  }
+                                  style={{
+                                    textAlign: "left",
+                                    padding: "8px 12px",
+                                    borderRadius: "6px",
+                                    border: `1px solid ${defect.narrative === n.text ? "#0F2A4A" : "#E2E8F0"}`,
+                                    background:
+                                      defect.narrative === n.text
+                                        ? "#EFF6FF"
+                                        : "#F8FAFC",
+                                    cursor: "pointer",
+                                    fontSize: "12px",
+                                    color: "#374151",
+                                    lineHeight: "1.5",
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      fontWeight: 700,
+                                      color:
+                                        defect.narrative === n.text
+                                          ? "#0F2A4A"
+                                          : "#64748B",
+                                      fontSize: "11px",
+                                      textTransform: "uppercase",
+                                      display: "block",
+                                      marginBottom: "2px",
+                                    }}
+                                  >
+                                    {defect.narrative === n.text ? "✓ " : ""}
+                                    {n.label}
+                                  </span>
+                                  {n.text}
+                                </button>
+                              ),
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       <textarea
                         value={defect.narrative}
                         onChange={(e) =>
                           updateDefect(defect.id, "narrative", e.target.value)
                         }
-                        placeholder="e.g. Root intrusion; unable to determine where roots are originating."
+                        placeholder={
+                          narrativeLibrary[defect.conditionType]
+                            ? "Select a quick fill above or type your own narrative..."
+                            : "e.g. Root intrusion; unable to determine where roots are originating."
+                        }
                         rows={3}
                         style={{
                           ...inp,
@@ -1485,7 +1738,27 @@ export default function ReportBuilder() {
                           lineHeight: "1.6",
                         }}
                       />
+                      {defect.narrative && (
+                        <button
+                          onClick={() =>
+                            updateDefect(defect.id, "narrative", "")
+                          }
+                          style={{
+                            marginTop: "4px",
+                            background: "none",
+                            border: "none",
+                            fontSize: "11px",
+                            color: "#94A3B8",
+                            cursor: "pointer",
+                            padding: 0,
+                          }}
+                        >
+                          ✕ Clear narrative
+                        </button>
+                      )}
                     </div>
+
+                    {/* Photos */}
                     <label style={lbl}>Photos ({defect.images.length}/6)</label>
                     <div
                       onDragOver={(e) => {
@@ -1500,16 +1773,16 @@ export default function ReportBuilder() {
                       }}
                       onClick={() => {
                         if (defect.images.length >= 6) return;
-                        const input = document.createElement("input");
-                        input.type = "file";
-                        input.accept = "image/*";
-                        input.multiple = true;
-                        input.onchange = (e) =>
+                        const i = document.createElement("input");
+                        i.type = "file";
+                        i.accept = "image/*";
+                        i.multiple = true;
+                        i.onchange = (e) =>
                           handleImageUpload(
                             defect.id,
                             (e.target as HTMLInputElement).files,
                           );
-                        input.click();
+                        i.click();
                       }}
                       style={{
                         border: `2px dashed ${dragOver === defect.id ? "#2D8C4E" : "#E2E8F0"}`,
@@ -1532,6 +1805,7 @@ export default function ReportBuilder() {
                           : "Drag & drop or click to upload"}
                       </div>
                     </div>
+
                     {defect.images.length > 0 && (
                       <div
                         style={{
@@ -1623,7 +1897,7 @@ export default function ReportBuilder() {
           </div>
         )}
 
-        {/* TAB 4 — End of Report */}
+        {/* ── TAB 4: End of Report ── */}
         {activeTab === "recommendations" && (
           <div>
             <div style={card}>
