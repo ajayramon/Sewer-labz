@@ -30,17 +30,29 @@ export default function LoginPage() {
       await signInWithEmailAndPassword(auth, email, password);
       router.push("/");
     } catch (err: any) {
+      console.error("Firebase login error:", err);
+      console.error("Error code:", err?.code);
+      console.error("Error message:", err?.message);
+
       const code = err?.code || "";
       if (
         code === "auth/user-not-found" ||
         code === "auth/wrong-password" ||
-        code === "auth/invalid-credential"
+        code === "auth/invalid-credential" ||
+        code === "auth/invalid-email"
       ) {
         setError("INVALID EMAIL OR PASSWORD");
       } else if (code === "auth/too-many-requests") {
         setError("TOO MANY ATTEMPTS — TRY AGAIN LATER");
+      } else if (code === "auth/network-request-failed") {
+        setError("NETWORK ERROR — CHECK YOUR CONNECTION");
+      } else if (
+        code === "auth/configuration-not-found" ||
+        code === "auth/api-key-not-valid"
+      ) {
+        setError("FIREBASE CONFIG ERROR — CHECK ENV VARIABLES");
       } else {
-        setError("LOGIN FAILED — PLEASE TRY AGAIN");
+        setError(`LOGIN FAILED — CODE: ${code || "UNKNOWN"}`);
       }
     } finally {
       setLoading(false);
@@ -56,6 +68,7 @@ export default function LoginPage() {
         justifyContent: "center",
         background: "#F8FAFC",
         fontFamily: "Inter, Arial, sans-serif",
+        padding: "24px",
       }}
     >
       <div
@@ -68,6 +81,7 @@ export default function LoginPage() {
           boxShadow: "0 4px 24px rgba(0,0,0,0.08)",
         }}
       >
+        {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: "8px" }}>
           <span
             style={{
@@ -91,6 +105,7 @@ export default function LoginPage() {
           Professional Sewer Inspection Reports
         </p>
 
+        {/* Error */}
         {error && (
           <div
             style={{
@@ -103,34 +118,99 @@ export default function LoginPage() {
               marginBottom: "16px",
               fontWeight: 700,
               textTransform: "uppercase",
+              textAlign: "center",
             }}
           >
             {error}
           </div>
         )}
 
+        {/* Form */}
         <form onSubmit={handleLogin}>
+          {/* Email */}
           <div style={{ marginBottom: "14px" }}>
-            <label style={lbl}>Email</label>
+            <label
+              style={{
+                display: "block",
+                fontSize: "11px",
+                fontWeight: 600,
+                color: "#64748B",
+                marginBottom: "4px",
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+              }}
+            >
+              Email
+            </label>
             <input
               ref={emailRef}
               type="email"
               placeholder="you@example.com"
-              defaultValue=""
-              style={inp}
-            />
-          </div>
-          <div style={{ marginBottom: "20px" }}>
-            <label style={lbl}>Password</label>
-            <input
-              ref={passwordRef}
-              type="password"
-              placeholder="••••••••"
-              defaultValue=""
-              style={inp}
+              autoComplete="email"
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                borderRadius: "6px",
+                border: "1px solid #E2E8F0",
+                fontSize: "14px",
+                outline: "none",
+                boxSizing: "border-box",
+                background: "#F8FAFC",
+                color: "#0F172A",
+              }}
             />
           </div>
 
+          {/* Password */}
+          <div style={{ marginBottom: "6px" }}>
+            <label
+              style={{
+                display: "block",
+                fontSize: "11px",
+                fontWeight: 600,
+                color: "#64748B",
+                marginBottom: "4px",
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+              }}
+            >
+              Password
+            </label>
+            <input
+              ref={passwordRef}
+              type="password"
+              placeholder="••••••••••"
+              autoComplete="current-password"
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                borderRadius: "6px",
+                border: "1px solid #E2E8F0",
+                fontSize: "14px",
+                outline: "none",
+                boxSizing: "border-box",
+                background: "#F8FAFC",
+                color: "#0F172A",
+              }}
+            />
+          </div>
+
+          {/* Forgot password */}
+          <div style={{ textAlign: "right", marginBottom: "20px" }}>
+            <Link
+              href="/forget-password"
+              style={{
+                fontSize: "12px",
+                color: "#2D8C4E",
+                textDecoration: "none",
+                fontWeight: 600,
+              }}
+            >
+              Forgot password?
+            </Link>
+          </div>
+
+          {/* Submit */}
           <button
             type="submit"
             disabled={loading}
@@ -138,54 +218,31 @@ export default function LoginPage() {
               width: "100%",
               padding: "12px",
               borderRadius: "8px",
+              border: "none",
               background: loading ? "#94A3B8" : "#2D8C4E",
               color: "#fff",
-              border: "none",
               fontSize: "14px",
               fontWeight: 700,
               cursor: loading ? "not-allowed" : "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+              transition: "background 0.2s",
             }}
           >
-            {loading ? "Signing In..." : "Sign In"}
+            {loading && <Spinner />}
+            {loading ? "Signing in..." : "Sign In"}
           </button>
         </form>
 
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            marginTop: "14px",
-          }}
-        >
-          <Link
-            href="/forget-password"
-            style={{
-              fontSize: "13px",
-              color: "#2D8C4E",
-              textDecoration: "none",
-            }}
-          >
-            Forgot password?
-          </Link>
-          <Link
-            href="/signup"
-            style={{
-              fontSize: "13px",
-              color: "#2D8C4E",
-              textDecoration: "none",
-              fontWeight: 600,
-            }}
-          >
-            Sign up →
-          </Link>
-        </div>
-
+        {/* Disclaimer */}
         <div
           style={{
             marginTop: "24px",
-            padding: "14px",
+            padding: "12px",
             background: "#F8FAFC",
-            borderRadius: "8px",
+            borderRadius: "6px",
             border: "1px solid #E2E8F0",
           }}
         >
@@ -193,8 +250,8 @@ export default function LoginPage() {
             style={{
               fontSize: "10px",
               color: "#94A3B8",
-              lineHeight: "1.7",
               textAlign: "center",
+              lineHeight: "1.7",
               textTransform: "uppercase",
               fontWeight: 600,
               letterSpacing: "0.03em",
@@ -208,28 +265,47 @@ export default function LoginPage() {
             CONDITIONS.
           </p>
         </div>
+
+        {/* Sign up link */}
+        <p
+          style={{
+            textAlign: "center",
+            fontSize: "13px",
+            color: "#64748B",
+            marginTop: "20px",
+          }}
+        >
+          Don't have an account?{" "}
+          <Link
+            href="/signup"
+            style={{
+              color: "#2D8C4E",
+              fontWeight: 700,
+              textDecoration: "none",
+            }}
+          >
+            Sign up →
+          </Link>
+        </p>
       </div>
     </div>
   );
 }
 
-const lbl: React.CSSProperties = {
-  display: "block",
-  fontSize: "11px",
-  fontWeight: 600,
-  color: "#64748B",
-  marginBottom: "4px",
-  textTransform: "uppercase",
-  letterSpacing: "0.05em",
-};
-const inp: React.CSSProperties = {
-  width: "100%",
-  padding: "10px 12px",
-  borderRadius: "6px",
-  border: "1px solid #E2E8F0",
-  fontSize: "14px",
-  outline: "none",
-  boxSizing: "border-box",
-  background: "#F8FAFC",
-  color: "#0F172A",
-};
+function Spinner() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      style={{ animation: "sl-spin 0.8s linear infinite" }}
+    >
+      <style>{`@keyframes sl-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
+      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+    </svg>
+  );
+}

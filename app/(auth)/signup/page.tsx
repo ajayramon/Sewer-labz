@@ -11,7 +11,7 @@ export default function SignupPage() {
   const [agreed, setAgreed] = useState(false);
   const [plan, setPlan] = useState("FREE");
   const [showTerms, setShowTerms] = useState(false);
-  const [loading, setLoading] = useState(false); // ✅ FIXED: added missing state
+  const [loading, setLoading] = useState(false);
 
   const fullNameRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
@@ -86,19 +86,21 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
-      // 1. Create Firebase auth account
       const { createUserWithEmailAndPassword, updateProfile } =
         await import("firebase/auth");
       const { auth, db } = await import("@/app/Lib/firebase");
       const { doc, setDoc, serverTimestamp } =
         await import("firebase/firestore");
 
+      // 1. Create Firebase auth account
       const cred = await createUserWithEmailAndPassword(auth, email, password);
 
       // 2. Set display name
       await updateProfile(cred.user, { displayName: fullName });
 
       // 3. Save profile to Firestore
+      // ✅ plan is always FREE at signup — no Stripe needed
+      // ✅ subscriptionStatus = "active" so the app works immediately
       await setDoc(doc(db, "users", cred.user.uid), {
         fullName,
         email,
@@ -111,7 +113,12 @@ export default function SignupPage() {
         companyCity: cityRef.current?.value || "",
         companyState: stateRef.current?.value || "",
         companyZip: zipRef.current?.value || "",
-        plan,
+
+        // ✅ These 3 lines make signup work without Stripe
+        plan: "FREE", // always start on FREE
+        subscriptionStatus: "active", // active so app doesn't block them
+        stripeCustomerId: null, // will be set when they subscribe
+
         createdAt: serverTimestamp(),
       });
 
@@ -519,11 +526,30 @@ export default function SignupPage() {
                   fontSize: "14px",
                   fontWeight: 700,
                   color: "#0F2A4A",
-                  marginBottom: "16px",
+                  marginBottom: "4px",
                 }}
               >
                 Choose Your Plan
               </h3>
+
+              {/* ✅ Info banner — Stripe coming soon */}
+              <div
+                style={{
+                  background: "#EFF6FF",
+                  border: "1px solid #BFDBFE",
+                  borderRadius: "6px",
+                  padding: "10px 12px",
+                  fontSize: "11px",
+                  color: "#1D4ED8",
+                  fontWeight: 600,
+                  marginBottom: "14px",
+                  lineHeight: "1.6",
+                }}
+              >
+                💡 All accounts start on the <b>Free plan</b>. You can upgrade
+                to Pro from your dashboard at any time once billing is
+                available.
+              </div>
 
               {plans.map((p) => (
                 <div
@@ -537,9 +563,28 @@ export default function SignupPage() {
                     cursor: "pointer",
                     background: plan === p.id ? "#F8FAFC" : "#fff",
                     position: "relative",
+                    opacity: p.id !== "FREE" ? 0.6 : 1, // ✅ dim paid plans until Stripe is live
                   }}
                 >
-                  {p.badge && (
+                  {p.id !== "FREE" && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "-10px",
+                        left: "12px",
+                        background: "#94A3B8",
+                        color: "#fff",
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        padding: "2px 10px",
+                        borderRadius: "20px",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Coming Soon
+                    </div>
+                  )}
+                  {p.badge && p.id === "FREE" && (
                     <div
                       style={{
                         position: "absolute",
@@ -648,7 +693,7 @@ export default function SignupPage() {
                 </div>
               ))}
 
-              {/* Terms clickable */}
+              {/* Terms */}
               <div
                 style={{
                   background: "#F8FAFC",
@@ -743,9 +788,16 @@ export default function SignupPage() {
                   fontSize: "14px",
                   fontWeight: 700,
                   cursor: loading || !agreed ? "not-allowed" : "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "8px",
                 }}
               >
-                {loading ? "Creating Account..." : "Create Account"}
+                {loading && <Spinner />}
+                {loading
+                  ? "Creating Account..."
+                  : "Create Account — Start Free"}
               </button>
             </div>
           )}
@@ -873,7 +925,6 @@ export default function SignupPage() {
                 ×
               </button>
             </div>
-
             <div style={{ overflowY: "auto", flex: 1, marginBottom: "20px" }}>
               {termsContent.map(({ title, text }) => (
                 <div key={title} style={{ marginBottom: "18px" }}>
@@ -902,7 +953,6 @@ export default function SignupPage() {
                 </div>
               ))}
             </div>
-
             <button
               onClick={() => {
                 setAgreed(true);
@@ -927,5 +977,23 @@ export default function SignupPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function Spinner() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      style={{ animation: "sl-spin 0.8s linear infinite" }}
+    >
+      <style>{`@keyframes sl-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
+      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+    </svg>
   );
 }
