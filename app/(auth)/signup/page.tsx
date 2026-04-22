@@ -4,6 +4,76 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
+const inp: React.CSSProperties = {
+  width: "100%",
+  padding: "10px 12px",
+  borderRadius: "6px",
+  border: "1px solid #E2E8F0",
+  fontSize: "14px",
+  outline: "none",
+  boxSizing: "border-box",
+  background: "#F8FAFC",
+  color: "#0F172A",
+};
+
+const lbl: React.CSSProperties = {
+  display: "block",
+  fontSize: "11px",
+  fontWeight: 600,
+  color: "#64748B",
+  marginBottom: "4px",
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+};
+
+function Field({
+  label,
+  value,
+  onChange,
+  type = "text",
+  placeholder = "",
+  maxLength,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+  placeholder?: string;
+  maxLength?: number;
+}) {
+  return (
+    <div style={{ marginBottom: "14px" }}>
+      <label style={lbl}>{label}</label>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        maxLength={maxLength}
+        style={inp}
+      />
+    </div>
+  );
+}
+
+function Spinner() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      style={{ animation: "sl-spin 0.8s linear infinite" }}
+    >
+      <style>{`@keyframes sl-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
+      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+    </svg>
+  );
+}
+
 export default function SignupPage() {
   const router = useRouter();
   const [step, setStep] = useState(1);
@@ -30,7 +100,7 @@ export default function SignupPage() {
     companyZip: "",
   });
 
-  const set = (k: string, v: string) => setForm((p) => ({ ...p, [k]: v }));
+  const set = (k: string) => (v: string) => setForm((p) => ({ ...p, [k]: v }));
 
   const validateStep1 = () => {
     if (!form.fullName.trim()) return "Full name is required";
@@ -71,6 +141,19 @@ export default function SignupPage() {
     setStep((p) => p + 1);
   };
 
+  const createAuthUser = async () => {
+    const { createUserWithEmailAndPassword, updateProfile } =
+      await import("firebase/auth");
+    const { auth } = await import("@/app/Lib/firebase");
+    const cred = await createUserWithEmailAndPassword(
+      auth,
+      form.email,
+      form.password,
+    );
+    await updateProfile(cred.user, { displayName: form.fullName });
+    return cred.user;
+  };
+
   const saveToFirestore = async (uid: string, extra: object) => {
     const { db } = await import("@/app/Lib/firebase");
     const { doc, setDoc, serverTimestamp } = await import("firebase/firestore");
@@ -90,19 +173,6 @@ export default function SignupPage() {
       createdAt: serverTimestamp(),
       ...extra,
     });
-  };
-
-  const createAuthUser = async () => {
-    const { createUserWithEmailAndPassword, updateProfile } =
-      await import("firebase/auth");
-    const { auth } = await import("@/app/Lib/firebase");
-    const cred = await createUserWithEmailAndPassword(
-      auth,
-      form.email,
-      form.password,
-    );
-    await updateProfile(cred.user, { displayName: form.fullName });
-    return cred.user;
   };
 
   const createFreeAccount = async () => {
@@ -156,7 +226,7 @@ export default function SignupPage() {
       });
       const data = await res.json();
       if (data.url) window.location.href = data.url;
-      else throw new Error("No checkout URL returned");
+      else throw new Error("No checkout URL");
     } catch (err: any) {
       const code = err?.code || "";
       if (code === "auth/email-already-in-use")
@@ -172,118 +242,6 @@ export default function SignupPage() {
     if (plan === "FREE") await createFreeAccount();
     else await createProAccount(plan);
   };
-
-  const inp: React.CSSProperties = {
-    width: "100%",
-    padding: "10px 12px",
-    borderRadius: "6px",
-    border: "1px solid #E2E8F0",
-    fontSize: "14px",
-    outline: "none",
-    boxSizing: "border-box",
-    background: "#F8FAFC",
-    color: "#0F172A",
-  };
-  const lbl: React.CSSProperties = {
-    display: "block",
-    fontSize: "11px",
-    fontWeight: 600,
-    color: "#64748B",
-    marginBottom: "4px",
-    textTransform: "uppercase",
-    letterSpacing: "0.05em",
-  };
-
-  const Field = ({
-    label,
-    k,
-    type = "text",
-    placeholder = "",
-    maxLength,
-  }: {
-    label: string;
-    k: string;
-    type?: string;
-    placeholder?: string;
-    maxLength?: number;
-  }) => (
-    <div style={{ marginBottom: "14px" }}>
-      <label style={lbl}>{label}</label>
-      <input
-        type={type}
-        value={(form as any)[k]}
-        onChange={(e) => set(k, e.target.value)}
-        placeholder={placeholder}
-        maxLength={maxLength}
-        style={inp}
-      />
-    </div>
-  );
-
-  const StepBar = () => (
-    <div
-      style={{ display: "flex", alignItems: "center", marginBottom: "28px" }}
-    >
-      {["Account", "Company", "Plan"].map((label, i) => {
-        const num = i + 1;
-        const done = step > num;
-        const active = step === num;
-        return (
-          <div
-            key={label}
-            style={{ display: "flex", alignItems: "center", flex: 1 }}
-          >
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                flex: 1,
-              }}
-            >
-              <div
-                style={{
-                  width: "32px",
-                  height: "32px",
-                  borderRadius: "50%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: "13px",
-                  fontWeight: 800,
-                  marginBottom: "4px",
-                  background: done ? "#2D8C4E" : active ? "#0F2A4A" : "#E2E8F0",
-                  color: done || active ? "#fff" : "#94A3B8",
-                }}
-              >
-                {done ? "✓" : num}
-              </div>
-              <span
-                style={{
-                  fontSize: "10px",
-                  fontWeight: 600,
-                  textTransform: "uppercase",
-                  color: active ? "#0F2A4A" : "#94A3B8",
-                }}
-              >
-                {label}
-              </span>
-            </div>
-            {i < 2 && (
-              <div
-                style={{
-                  height: "2px",
-                  flex: 2,
-                  marginBottom: "18px",
-                  background: step > num ? "#2D8C4E" : "#E2E8F0",
-                }}
-              />
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
 
   const plans = [
     {
@@ -405,7 +363,77 @@ export default function SignupPage() {
           Create your inspector account
         </p>
 
-        <StepBar />
+        {/* Step bar */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            marginBottom: "28px",
+          }}
+        >
+          {["Account", "Company", "Plan"].map((label, i) => {
+            const num = i + 1;
+            const done = step > num;
+            const active = step === num;
+            return (
+              <div
+                key={label}
+                style={{ display: "flex", alignItems: "center", flex: 1 }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    flex: 1,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "32px",
+                      height: "32px",
+                      borderRadius: "50%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "13px",
+                      fontWeight: 800,
+                      marginBottom: "4px",
+                      background: done
+                        ? "#2D8C4E"
+                        : active
+                          ? "#0F2A4A"
+                          : "#E2E8F0",
+                      color: done || active ? "#fff" : "#94A3B8",
+                    }}
+                  >
+                    {done ? "✓" : num}
+                  </div>
+                  <span
+                    style={{
+                      fontSize: "10px",
+                      fontWeight: 600,
+                      textTransform: "uppercase",
+                      color: active ? "#0F2A4A" : "#94A3B8",
+                    }}
+                  >
+                    {label}
+                  </span>
+                </div>
+                {i < 2 && (
+                  <div
+                    style={{
+                      height: "2px",
+                      flex: 2,
+                      marginBottom: "18px",
+                      background: step > num ? "#2D8C4E" : "#E2E8F0",
+                    }}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
 
         {error && (
           <div
@@ -440,24 +468,28 @@ export default function SignupPage() {
               </h3>
               <Field
                 label="Full Name *"
-                k="fullName"
+                value={form.fullName}
+                onChange={set("fullName")}
                 placeholder="John Smith"
               />
               <Field
                 label="Email Address *"
-                k="email"
+                value={form.email}
+                onChange={set("email")}
                 type="email"
                 placeholder="you@example.com"
               />
               <Field
                 label="Password *"
-                k="password"
+                value={form.password}
+                onChange={set("password")}
                 type="password"
                 placeholder="Min 6 characters"
               />
               <Field
                 label="Confirm Password *"
-                k="confirm"
+                value={form.confirm}
+                onChange={set("confirm")}
                 type="password"
                 placeholder="Re-enter password"
               />
@@ -478,34 +510,40 @@ export default function SignupPage() {
               </h3>
               <Field
                 label="Company Name *"
-                k="companyName"
+                value={form.companyName}
+                onChange={set("companyName")}
                 placeholder="Sewer Labz"
               />
               <Field
                 label="Inspector Title"
-                k="inspectorTitle"
+                value={form.inspectorTitle}
+                onChange={set("inspectorTitle")}
                 placeholder="e.g. Certified Sewer Inspector"
               />
               <Field
                 label="License Number"
-                k="licenseNumber"
+                value={form.licenseNumber}
+                onChange={set("licenseNumber")}
                 placeholder="e.g. LIC-123456"
               />
               <Field
                 label="Phone Number *"
-                k="companyPhone"
+                value={form.companyPhone}
+                onChange={set("companyPhone")}
                 type="tel"
                 placeholder="(702) 000-0000"
               />
               <Field
                 label="Company Website"
-                k="companyWebsite"
+                value={form.companyWebsite}
+                onChange={set("companyWebsite")}
                 type="url"
                 placeholder="https://yourdomain.com"
               />
               <Field
                 label="Street Address *"
-                k="companyAddress"
+                value={form.companyAddress}
+                onChange={set("companyAddress")}
                 placeholder="123 Main St"
               />
               <div
@@ -521,7 +559,7 @@ export default function SignupPage() {
                   <input
                     type="text"
                     value={form.companyCity}
-                    onChange={(e) => set("companyCity", e.target.value)}
+                    onChange={(e) => set("companyCity")(e.target.value)}
                     placeholder="Las Vegas"
                     style={inp}
                   />
@@ -531,7 +569,7 @@ export default function SignupPage() {
                   <input
                     type="text"
                     value={form.companyState}
-                    onChange={(e) => set("companyState", e.target.value)}
+                    onChange={(e) => set("companyState")(e.target.value)}
                     placeholder="NV"
                     maxLength={2}
                     style={inp}
@@ -542,7 +580,7 @@ export default function SignupPage() {
                   <input
                     type="text"
                     value={form.companyZip}
-                    onChange={(e) => set("companyZip", e.target.value)}
+                    onChange={(e) => set("companyZip")(e.target.value)}
                     placeholder="89101"
                     style={inp}
                   />
@@ -563,7 +601,6 @@ export default function SignupPage() {
               >
                 Choose Your Plan
               </h3>
-
               {plans.map((p) => (
                 <div
                   key={p.id}
@@ -727,7 +764,6 @@ export default function SignupPage() {
                     textDecoration: "underline",
                     cursor: "pointer",
                     textTransform: "uppercase",
-                    letterSpacing: "0.05em",
                   }}
                 >
                   View Full Terms & Conditions →
@@ -769,7 +805,7 @@ export default function SignupPage() {
                 </span>
               </label>
 
-              {plan === "FREE" && (
+              {plan === "FREE" ? (
                 <button
                   type="submit"
                   disabled={loading || !agreed}
@@ -794,9 +830,7 @@ export default function SignupPage() {
                     ? "Creating Account..."
                     : "Start Free — No Credit Card"}
                 </button>
-              )}
-
-              {plan !== "FREE" && (
+              ) : (
                 <>
                   <button
                     type="submit"
@@ -1014,23 +1048,5 @@ export default function SignupPage() {
         </div>
       )}
     </div>
-  );
-}
-
-function Spinner() {
-  return (
-    <svg
-      width="15"
-      height="15"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      style={{ animation: "sl-spin 0.8s linear infinite" }}
-    >
-      <style>{`@keyframes sl-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
-      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-    </svg>
   );
 }
