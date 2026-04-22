@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -14,41 +14,41 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState("");
 
-  const fullNameRef = useRef<HTMLInputElement>(null);
-  const emailRef = useRef<HTMLInputElement>(null);
-  const passwordRef = useRef<HTMLInputElement>(null);
-  const confirmRef = useRef<HTMLInputElement>(null);
-  const companyNameRef = useRef<HTMLInputElement>(null);
-  const inspectorTitleRef = useRef<HTMLInputElement>(null);
-  const licenseRef = useRef<HTMLInputElement>(null);
-  const phoneRef = useRef<HTMLInputElement>(null);
-  const websiteRef = useRef<HTMLInputElement>(null);
-  const addressRef = useRef<HTMLInputElement>(null);
-  const cityRef = useRef<HTMLInputElement>(null);
-  const stateRef = useRef<HTMLInputElement>(null);
-  const zipRef = useRef<HTMLInputElement>(null);
+  const [form, setForm] = useState({
+    fullName: "",
+    email: "",
+    password: "",
+    confirm: "",
+    companyName: "",
+    inspectorTitle: "",
+    licenseNumber: "",
+    companyPhone: "",
+    companyWebsite: "",
+    companyAddress: "",
+    companyCity: "",
+    companyState: "",
+    companyZip: "",
+  });
+
+  const set = (k: string, v: string) => setForm((p) => ({ ...p, [k]: v }));
 
   const validateStep1 = () => {
-    const fullName = fullNameRef.current?.value || "";
-    const email = emailRef.current?.value || "";
-    const password = passwordRef.current?.value || "";
-    const confirm = confirmRef.current?.value || "";
-    if (!fullName.trim()) return "Full name is required";
-    if (!email.trim()) return "Email is required";
-    if (!email.includes("@")) return "Enter a valid email";
-    if (!password) return "Password is required";
-    if (password.length < 6) return "Password must be at least 6 characters";
-    if (password !== confirm) return "Passwords do not match";
+    if (!form.fullName.trim()) return "Full name is required";
+    if (!form.email.trim()) return "Email is required";
+    if (!form.email.includes("@")) return "Enter a valid email";
+    if (!form.password) return "Password is required";
+    if (form.password.length < 6)
+      return "Password must be at least 6 characters";
+    if (form.password !== form.confirm) return "Passwords do not match";
     return "";
   };
 
   const validateStep2 = () => {
-    if (!companyNameRef.current?.value?.trim())
-      return "Company name is required";
-    if (!phoneRef.current?.value?.trim()) return "Phone number is required";
-    if (!addressRef.current?.value?.trim()) return "Address is required";
-    if (!cityRef.current?.value?.trim()) return "City is required";
-    if (!stateRef.current?.value?.trim()) return "State is required";
+    if (!form.companyName.trim()) return "Company name is required";
+    if (!form.companyPhone.trim()) return "Phone number is required";
+    if (!form.companyAddress.trim()) return "Address is required";
+    if (!form.companyCity.trim()) return "City is required";
+    if (!form.companyState.trim()) return "State is required";
     return "";
   };
 
@@ -71,128 +71,97 @@ export default function SignupPage() {
     setStep((p) => p + 1);
   };
 
-  // Create free account then redirect to dashboard
+  const saveToFirestore = async (uid: string, extra: object) => {
+    const { db } = await import("@/app/Lib/firebase");
+    const { doc, setDoc, serverTimestamp } = await import("firebase/firestore");
+    await setDoc(doc(db, "users", uid), {
+      fullName: form.fullName,
+      email: form.email,
+      companyName: form.companyName,
+      inspectorTitle: form.inspectorTitle,
+      licenseNumber: form.licenseNumber,
+      companyPhone: form.companyPhone,
+      companyWebsite: form.companyWebsite,
+      companyAddress: form.companyAddress,
+      companyCity: form.companyCity,
+      companyState: form.companyState,
+      companyZip: form.companyZip,
+      lemonsqueezyCustomerId: null,
+      createdAt: serverTimestamp(),
+      ...extra,
+    });
+  };
+
+  const createAuthUser = async () => {
+    const { createUserWithEmailAndPassword, updateProfile } =
+      await import("firebase/auth");
+    const { auth } = await import("@/app/Lib/firebase");
+    const cred = await createUserWithEmailAndPassword(
+      auth,
+      form.email,
+      form.password,
+    );
+    await updateProfile(cred.user, { displayName: form.fullName });
+    return cred.user;
+  };
+
   const createFreeAccount = async () => {
     if (!agreed) {
       setError("YOU MUST AGREE TO THE TERMS AND CONDITIONS");
       return;
     }
-    const email = emailRef.current?.value || "";
-    const password = passwordRef.current?.value || "";
-    const fullName = fullNameRef.current?.value || "";
-    const companyName = companyNameRef.current?.value || "";
-
     setError("");
     setLoading(true);
-
     try {
-      const { createUserWithEmailAndPassword, updateProfile } =
-        await import("firebase/auth");
-      const { auth, db } = await import("@/app/Lib/firebase");
-      const { doc, setDoc, serverTimestamp } =
-        await import("firebase/firestore");
-
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
-      await updateProfile(cred.user, { displayName: fullName });
-      await setDoc(doc(db, "users", cred.user.uid), {
-        fullName,
-        email,
-        companyName,
-        inspectorTitle: inspectorTitleRef.current?.value || "",
-        licenseNumber: licenseRef.current?.value || "",
-        companyPhone: phoneRef.current?.value || "",
-        companyWebsite: websiteRef.current?.value || "",
-        companyAddress: addressRef.current?.value || "",
-        companyCity: cityRef.current?.value || "",
-        companyState: stateRef.current?.value || "",
-        companyZip: zipRef.current?.value || "",
+      const user = await createAuthUser();
+      await saveToFirestore(user.uid, {
         plan: "FREE",
         subscriptionStatus: "active",
-        lemonsqueezyCustomerId: null,
-        createdAt: serverTimestamp(),
       });
-
       router.push("/");
     } catch (err: any) {
       const code = err?.code || "";
-      if (code === "auth/email-already-in-use") {
+      if (code === "auth/email-already-in-use")
         setError("AN ACCOUNT WITH THIS EMAIL ALREADY EXISTS");
-      } else if (code === "auth/weak-password") {
+      else if (code === "auth/weak-password")
         setError("PASSWORD IS TOO WEAK — MIN 6 CHARACTERS");
-      } else {
-        setError(`SIGNUP FAILED: ${code || err?.message || "UNKNOWN"}`);
-      }
+      else setError(`SIGNUP FAILED: ${code || err?.message || "UNKNOWN"}`);
     } finally {
       setLoading(false);
     }
   };
 
-  // Create account then redirect to LemonSqueezy checkout
   const createProAccount = async (selectedPlan: string) => {
     if (!agreed) {
       setError("YOU MUST AGREE TO THE TERMS AND CONDITIONS");
       return;
     }
-    const email = emailRef.current?.value || "";
-    const password = passwordRef.current?.value || "";
-    const fullName = fullNameRef.current?.value || "";
-    const companyName = companyNameRef.current?.value || "";
-
     setError("");
     setCheckoutLoading(selectedPlan);
-
     try {
-      const { createUserWithEmailAndPassword, updateProfile } =
-        await import("firebase/auth");
-      const { auth, db } = await import("@/app/Lib/firebase");
-      const { doc, setDoc, serverTimestamp } =
-        await import("firebase/firestore");
-
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
-      await updateProfile(cred.user, { displayName: fullName });
-      await setDoc(doc(db, "users", cred.user.uid), {
-        fullName,
-        email,
-        companyName,
-        inspectorTitle: inspectorTitleRef.current?.value || "",
-        licenseNumber: licenseRef.current?.value || "",
-        companyPhone: phoneRef.current?.value || "",
-        companyWebsite: websiteRef.current?.value || "",
-        companyAddress: addressRef.current?.value || "",
-        companyCity: cityRef.current?.value || "",
-        companyState: stateRef.current?.value || "",
-        companyZip: zipRef.current?.value || "",
+      const user = await createAuthUser();
+      await saveToFirestore(user.uid, {
         plan: "FREE",
         subscriptionStatus: "pending",
-        lemonsqueezyCustomerId: null,
-        createdAt: serverTimestamp(),
       });
-
-      // Get LemonSqueezy checkout URL
       const res = await fetch("/api/lemonsqueezy/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           plan: selectedPlan,
-          email,
-          name: fullName,
-          userId: cred.user.uid,
+          email: form.email,
+          name: form.fullName,
+          userId: user.uid,
         }),
       });
-
       const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        throw new Error("No checkout URL returned");
-      }
+      if (data.url) window.location.href = data.url;
+      else throw new Error("No checkout URL returned");
     } catch (err: any) {
       const code = err?.code || "";
-      if (code === "auth/email-already-in-use") {
+      if (code === "auth/email-already-in-use")
         setError("AN ACCOUNT WITH THIS EMAIL ALREADY EXISTS");
-      } else {
-        setError(`SIGNUP FAILED: ${code || err?.message || "UNKNOWN"}`);
-      }
+      else setError(`SIGNUP FAILED: ${code || err?.message || "UNKNOWN"}`);
     } finally {
       setCheckoutLoading("");
     }
@@ -200,11 +169,8 @@ export default function SignupPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (plan === "FREE") {
-      await createFreeAccount();
-    } else {
-      await createProAccount(plan);
-    }
+    if (plan === "FREE") await createFreeAccount();
+    else await createProAccount(plan);
   };
 
   const inp: React.CSSProperties = {
@@ -218,7 +184,6 @@ export default function SignupPage() {
     background: "#F8FAFC",
     color: "#0F172A",
   };
-
   const lbl: React.CSSProperties = {
     display: "block",
     fontSize: "11px",
@@ -231,13 +196,13 @@ export default function SignupPage() {
 
   const Field = ({
     label,
-    inputRef,
+    k,
     type = "text",
     placeholder = "",
     maxLength,
   }: {
     label: string;
-    inputRef: React.RefObject<HTMLInputElement | null>;
+    k: string;
     type?: string;
     placeholder?: string;
     maxLength?: number;
@@ -245,11 +210,11 @@ export default function SignupPage() {
     <div style={{ marginBottom: "14px" }}>
       <label style={lbl}>{label}</label>
       <input
-        ref={inputRef as React.RefObject<HTMLInputElement>}
         type={type}
+        value={(form as any)[k]}
+        onChange={(e) => set(k, e.target.value)}
         placeholder={placeholder}
         maxLength={maxLength}
-        defaultValue=""
         style={inp}
       />
     </div>
@@ -461,7 +426,6 @@ export default function SignupPage() {
         )}
 
         <form onSubmit={handleSubmit}>
-          {/* STEP 1 */}
           {step === 1 && (
             <div>
               <h3
@@ -476,31 +440,30 @@ export default function SignupPage() {
               </h3>
               <Field
                 label="Full Name *"
-                inputRef={fullNameRef}
+                k="fullName"
                 placeholder="John Smith"
               />
               <Field
                 label="Email Address *"
-                inputRef={emailRef}
+                k="email"
                 type="email"
                 placeholder="you@example.com"
               />
               <Field
                 label="Password *"
-                inputRef={passwordRef}
+                k="password"
                 type="password"
                 placeholder="Min 6 characters"
               />
               <Field
                 label="Confirm Password *"
-                inputRef={confirmRef}
+                k="confirm"
                 type="password"
                 placeholder="Re-enter password"
               />
             </div>
           )}
 
-          {/* STEP 2 */}
           {step === 2 && (
             <div>
               <h3
@@ -515,34 +478,34 @@ export default function SignupPage() {
               </h3>
               <Field
                 label="Company Name *"
-                inputRef={companyNameRef}
+                k="companyName"
                 placeholder="Sewer Labz"
               />
               <Field
                 label="Inspector Title"
-                inputRef={inspectorTitleRef}
+                k="inspectorTitle"
                 placeholder="e.g. Certified Sewer Inspector"
               />
               <Field
                 label="License Number"
-                inputRef={licenseRef}
+                k="licenseNumber"
                 placeholder="e.g. LIC-123456"
               />
               <Field
                 label="Phone Number *"
-                inputRef={phoneRef}
+                k="companyPhone"
                 type="tel"
                 placeholder="(702) 000-0000"
               />
               <Field
                 label="Company Website"
-                inputRef={websiteRef}
+                k="companyWebsite"
                 type="url"
                 placeholder="https://yourdomain.com"
               />
               <Field
                 label="Street Address *"
-                inputRef={addressRef}
+                k="companyAddress"
                 placeholder="123 Main St"
               />
               <div
@@ -556,31 +519,31 @@ export default function SignupPage() {
                 <div>
                   <label style={lbl}>City *</label>
                   <input
-                    ref={cityRef as React.RefObject<HTMLInputElement>}
                     type="text"
+                    value={form.companyCity}
+                    onChange={(e) => set("companyCity", e.target.value)}
                     placeholder="Las Vegas"
-                    defaultValue=""
                     style={inp}
                   />
                 </div>
                 <div>
                   <label style={lbl}>State *</label>
                   <input
-                    ref={stateRef as React.RefObject<HTMLInputElement>}
                     type="text"
+                    value={form.companyState}
+                    onChange={(e) => set("companyState", e.target.value)}
                     placeholder="NV"
                     maxLength={2}
-                    defaultValue=""
                     style={inp}
                   />
                 </div>
                 <div>
                   <label style={lbl}>ZIP</label>
                   <input
-                    ref={zipRef as React.RefObject<HTMLInputElement>}
                     type="text"
+                    value={form.companyZip}
+                    onChange={(e) => set("companyZip", e.target.value)}
                     placeholder="89101"
-                    defaultValue=""
                     style={inp}
                   />
                 </div>
@@ -588,7 +551,6 @@ export default function SignupPage() {
             </div>
           )}
 
-          {/* STEP 3 — Plan */}
           {step === 3 && (
             <div>
               <h3
@@ -726,7 +688,6 @@ export default function SignupPage() {
                 </div>
               ))}
 
-              {/* Terms */}
               <div
                 style={{
                   background: "#F8FAFC",
@@ -808,7 +769,6 @@ export default function SignupPage() {
                 </span>
               </label>
 
-              {/* FREE button */}
               {plan === "FREE" && (
                 <button
                   type="submit"
@@ -836,48 +796,46 @@ export default function SignupPage() {
                 </button>
               )}
 
-              {/* PRO buttons */}
               {plan !== "FREE" && (
-                <button
-                  type="submit"
-                  disabled={checkoutLoading !== "" || !agreed}
-                  style={{
-                    width: "100%",
-                    padding: "12px",
-                    borderRadius: "8px",
-                    border: "none",
-                    background:
-                      checkoutLoading || !agreed ? "#94A3B8" : "#0F2A4A",
-                    color: "#fff",
-                    fontSize: "14px",
-                    fontWeight: 700,
-                    cursor:
-                      checkoutLoading || !agreed ? "not-allowed" : "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "8px",
-                  }}
-                >
-                  {checkoutLoading && <Spinner />}
-                  {checkoutLoading
-                    ? "Redirecting to checkout..."
-                    : `Continue to Payment — ${plan === "PRO_MONTHLY" ? "$49.99/mo" : "$499.99/yr"}`}
-                </button>
-              )}
-
-              {plan !== "FREE" && (
-                <p
-                  style={{
-                    textAlign: "center",
-                    fontSize: "11px",
-                    color: "#94A3B8",
-                    marginTop: "8px",
-                  }}
-                >
-                  You'll be redirected to secure checkout. Account created
-                  first.
-                </p>
+                <>
+                  <button
+                    type="submit"
+                    disabled={checkoutLoading !== "" || !agreed}
+                    style={{
+                      width: "100%",
+                      padding: "12px",
+                      borderRadius: "8px",
+                      border: "none",
+                      background:
+                        checkoutLoading || !agreed ? "#94A3B8" : "#0F2A4A",
+                      color: "#fff",
+                      fontSize: "14px",
+                      fontWeight: 700,
+                      cursor:
+                        checkoutLoading || !agreed ? "not-allowed" : "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "8px",
+                    }}
+                  >
+                    {checkoutLoading && <Spinner />}
+                    {checkoutLoading
+                      ? "Redirecting to checkout..."
+                      : `Continue to Payment — ${plan === "PRO_MONTHLY" ? "$49.99/mo" : "$499.99/yr"}`}
+                  </button>
+                  <p
+                    style={{
+                      textAlign: "center",
+                      fontSize: "11px",
+                      color: "#94A3B8",
+                      marginTop: "8px",
+                    }}
+                  >
+                    You'll be redirected to secure checkout. Account created
+                    first.
+                  </p>
+                </>
               )}
             </div>
           )}
@@ -946,7 +904,6 @@ export default function SignupPage() {
         </p>
       </div>
 
-      {/* Terms Modal */}
       {showTerms && (
         <div
           style={{
