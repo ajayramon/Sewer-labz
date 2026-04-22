@@ -12,6 +12,7 @@ export default function SignupPage() {
   const [plan, setPlan] = useState("FREE");
   const [showTerms, setShowTerms] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState("");
 
   const fullNameRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
@@ -70,13 +71,12 @@ export default function SignupPage() {
     setStep((p) => p + 1);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Create free account then redirect to dashboard
+  const createFreeAccount = async () => {
     if (!agreed) {
       setError("YOU MUST AGREE TO THE TERMS AND CONDITIONS");
       return;
     }
-
     const email = emailRef.current?.value || "";
     const password = passwordRef.current?.value || "";
     const fullName = fullNameRef.current?.value || "";
@@ -92,15 +92,8 @@ export default function SignupPage() {
       const { doc, setDoc, serverTimestamp } =
         await import("firebase/firestore");
 
-      // 1. Create Firebase auth account
       const cred = await createUserWithEmailAndPassword(auth, email, password);
-
-      // 2. Set display name
       await updateProfile(cred.user, { displayName: fullName });
-
-      // 3. Save profile to Firestore
-      // ✅ plan is always FREE at signup — no Stripe needed
-      // ✅ subscriptionStatus = "active" so the app works immediately
       await setDoc(doc(db, "users", cred.user.uid), {
         fullName,
         email,
@@ -113,16 +106,12 @@ export default function SignupPage() {
         companyCity: cityRef.current?.value || "",
         companyState: stateRef.current?.value || "",
         companyZip: zipRef.current?.value || "",
-
-        // ✅ These 3 lines make signup work without Stripe
-        plan: "FREE", // always start on FREE
-        subscriptionStatus: "active", // active so app doesn't block them
-        stripeCustomerId: null, // will be set when they subscribe
-
+        plan: "FREE",
+        subscriptionStatus: "active",
+        lemonsqueezyCustomerId: null,
         createdAt: serverTimestamp(),
       });
 
-      // 4. Redirect to dashboard
       router.push("/");
     } catch (err: any) {
       const code = err?.code || "";
@@ -131,10 +120,90 @@ export default function SignupPage() {
       } else if (code === "auth/weak-password") {
         setError("PASSWORD IS TOO WEAK — MIN 6 CHARACTERS");
       } else {
-        setError("SIGNUP FAILED — PLEASE TRY AGAIN");
+        setError(`SIGNUP FAILED: ${code || err?.message || "UNKNOWN"}`);
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Create account then redirect to LemonSqueezy checkout
+  const createProAccount = async (selectedPlan: string) => {
+    if (!agreed) {
+      setError("YOU MUST AGREE TO THE TERMS AND CONDITIONS");
+      return;
+    }
+    const email = emailRef.current?.value || "";
+    const password = passwordRef.current?.value || "";
+    const fullName = fullNameRef.current?.value || "";
+    const companyName = companyNameRef.current?.value || "";
+
+    setError("");
+    setCheckoutLoading(selectedPlan);
+
+    try {
+      const { createUserWithEmailAndPassword, updateProfile } =
+        await import("firebase/auth");
+      const { auth, db } = await import("@/app/Lib/firebase");
+      const { doc, setDoc, serverTimestamp } =
+        await import("firebase/firestore");
+
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      await updateProfile(cred.user, { displayName: fullName });
+      await setDoc(doc(db, "users", cred.user.uid), {
+        fullName,
+        email,
+        companyName,
+        inspectorTitle: inspectorTitleRef.current?.value || "",
+        licenseNumber: licenseRef.current?.value || "",
+        companyPhone: phoneRef.current?.value || "",
+        companyWebsite: websiteRef.current?.value || "",
+        companyAddress: addressRef.current?.value || "",
+        companyCity: cityRef.current?.value || "",
+        companyState: stateRef.current?.value || "",
+        companyZip: zipRef.current?.value || "",
+        plan: "FREE",
+        subscriptionStatus: "pending",
+        lemonsqueezyCustomerId: null,
+        createdAt: serverTimestamp(),
+      });
+
+      // Get LemonSqueezy checkout URL
+      const res = await fetch("/api/lemonsqueezy/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          plan: selectedPlan,
+          email,
+          name: fullName,
+          userId: cred.user.uid,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error("No checkout URL returned");
+      }
+    } catch (err: any) {
+      const code = err?.code || "";
+      if (code === "auth/email-already-in-use") {
+        setError("AN ACCOUNT WITH THIS EMAIL ALREADY EXISTS");
+      } else {
+        setError(`SIGNUP FAILED: ${code || err?.message || "UNKNOWN"}`);
+      }
+    } finally {
+      setCheckoutLoading("");
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (plan === "FREE") {
+      await createFreeAccount();
+    } else {
+      await createProAccount(plan);
     }
   };
 
@@ -258,12 +327,13 @@ export default function SignupPage() {
       price: "$0",
       period: "/mo",
       color: "#64748B",
+      badge: null,
       features: ["5 reports/month", "Basic templates", "PDF export"],
     },
     {
       id: "PRO_MONTHLY",
       name: "Pro Monthly",
-      price: "$49",
+      price: "$49.99",
       period: "/mo",
       color: "#2D8C4E",
       badge: "Most Popular",
@@ -275,12 +345,12 @@ export default function SignupPage() {
       ],
     },
     {
-      id: "PRO_YEARLY",
-      name: "Pro Yearly",
-      price: "$499",
+      id: "PRO_ANNUALLY",
+      name: "Pro Annually",
+      price: "$499.99",
       period: "/yr",
       color: "#0F2A4A",
-      badge: "Save $89",
+      badge: "Save $99",
       features: [
         "Everything in Pro Monthly",
         "Best value",
@@ -391,7 +461,7 @@ export default function SignupPage() {
         )}
 
         <form onSubmit={handleSubmit}>
-          {/* STEP 1 — Account */}
+          {/* STEP 1 */}
           {step === 1 && (
             <div>
               <h3
@@ -430,7 +500,7 @@ export default function SignupPage() {
             </div>
           )}
 
-          {/* STEP 2 — Company */}
+          {/* STEP 2 */}
           {step === 2 && (
             <div>
               <h3
@@ -518,7 +588,7 @@ export default function SignupPage() {
             </div>
           )}
 
-          {/* STEP 3 — Plan + Terms */}
+          {/* STEP 3 — Plan */}
           {step === 3 && (
             <div>
               <h3
@@ -526,30 +596,11 @@ export default function SignupPage() {
                   fontSize: "14px",
                   fontWeight: 700,
                   color: "#0F2A4A",
-                  marginBottom: "4px",
+                  marginBottom: "16px",
                 }}
               >
                 Choose Your Plan
               </h3>
-
-              {/* ✅ Info banner — Stripe coming soon */}
-              <div
-                style={{
-                  background: "#EFF6FF",
-                  border: "1px solid #BFDBFE",
-                  borderRadius: "6px",
-                  padding: "10px 12px",
-                  fontSize: "11px",
-                  color: "#1D4ED8",
-                  fontWeight: 600,
-                  marginBottom: "14px",
-                  lineHeight: "1.6",
-                }}
-              >
-                💡 All accounts start on the <b>Free plan</b>. You can upgrade
-                to Pro from your dashboard at any time once billing is
-                available.
-              </div>
 
               {plans.map((p) => (
                 <div
@@ -563,33 +614,15 @@ export default function SignupPage() {
                     cursor: "pointer",
                     background: plan === p.id ? "#F8FAFC" : "#fff",
                     position: "relative",
-                    opacity: p.id !== "FREE" ? 0.6 : 1, // ✅ dim paid plans until Stripe is live
                   }}
                 >
-                  {p.id !== "FREE" && (
+                  {p.badge && (
                     <div
                       style={{
                         position: "absolute",
                         top: "-10px",
-                        left: "12px",
-                        background: "#94A3B8",
-                        color: "#fff",
-                        fontSize: "10px",
-                        fontWeight: 700,
-                        padding: "2px 10px",
-                        borderRadius: "20px",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      Coming Soon
-                    </div>
-                  )}
-                  {p.badge && p.id === "FREE" && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: "-10px",
-                        right: "12px",
+                        right: p.id === "FREE" ? "auto" : "12px",
+                        left: p.id === "FREE" ? "12px" : "auto",
                         background: p.color,
                         color: "#fff",
                         fontSize: "10px",
@@ -775,30 +808,77 @@ export default function SignupPage() {
                 </span>
               </label>
 
-              <button
-                type="submit"
-                disabled={loading || !agreed}
-                style={{
-                  width: "100%",
-                  padding: "12px",
-                  borderRadius: "8px",
-                  border: "none",
-                  background: loading || !agreed ? "#94A3B8" : "#2D8C4E",
-                  color: "#fff",
-                  fontSize: "14px",
-                  fontWeight: 700,
-                  cursor: loading || !agreed ? "not-allowed" : "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "8px",
-                }}
-              >
-                {loading && <Spinner />}
-                {loading
-                  ? "Creating Account..."
-                  : "Create Account — Start Free"}
-              </button>
+              {/* FREE button */}
+              {plan === "FREE" && (
+                <button
+                  type="submit"
+                  disabled={loading || !agreed}
+                  style={{
+                    width: "100%",
+                    padding: "12px",
+                    borderRadius: "8px",
+                    border: "none",
+                    background: loading || !agreed ? "#94A3B8" : "#2D8C4E",
+                    color: "#fff",
+                    fontSize: "14px",
+                    fontWeight: 700,
+                    cursor: loading || !agreed ? "not-allowed" : "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "8px",
+                  }}
+                >
+                  {loading && <Spinner />}
+                  {loading
+                    ? "Creating Account..."
+                    : "Start Free — No Credit Card"}
+                </button>
+              )}
+
+              {/* PRO buttons */}
+              {plan !== "FREE" && (
+                <button
+                  type="submit"
+                  disabled={checkoutLoading !== "" || !agreed}
+                  style={{
+                    width: "100%",
+                    padding: "12px",
+                    borderRadius: "8px",
+                    border: "none",
+                    background:
+                      checkoutLoading || !agreed ? "#94A3B8" : "#0F2A4A",
+                    color: "#fff",
+                    fontSize: "14px",
+                    fontWeight: 700,
+                    cursor:
+                      checkoutLoading || !agreed ? "not-allowed" : "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "8px",
+                  }}
+                >
+                  {checkoutLoading && <Spinner />}
+                  {checkoutLoading
+                    ? "Redirecting to checkout..."
+                    : `Continue to Payment — ${plan === "PRO_MONTHLY" ? "$49.99/mo" : "$499.99/yr"}`}
+                </button>
+              )}
+
+              {plan !== "FREE" && (
+                <p
+                  style={{
+                    textAlign: "center",
+                    fontSize: "11px",
+                    color: "#94A3B8",
+                    marginTop: "8px",
+                  }}
+                >
+                  You'll be redirected to secure checkout. Account created
+                  first.
+                </p>
+              )}
             </div>
           )}
 
