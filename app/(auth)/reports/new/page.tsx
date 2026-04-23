@@ -10,7 +10,6 @@ type Defect = {
   videoTimeH: string;
   videoTimeM: string;
   footageStart: string;
-  footageEnd: string;
   conditionType: string;
   severity: string;
   narrative: string;
@@ -67,6 +66,7 @@ const peopleOptions = [
   "Contractor",
   "Other",
 ];
+
 const weatherOptions = [
   "Sunny",
   "Cloudy",
@@ -335,6 +335,34 @@ const narrativeLibrary: Record<string, { label: string; text: string }[]> = {
   ],
 };
 
+const inp = {
+  height: "36px",
+  borderRadius: "6px",
+  border: "1px solid #E2E8F0",
+  padding: "0 10px",
+  fontSize: "13px",
+  color: "#0F172A",
+  outline: "none",
+  boxSizing: "border-box" as const,
+  background: "#F8FAFC",
+};
+const lbl = {
+  display: "block",
+  fontSize: "11px",
+  fontWeight: 600 as const,
+  color: "#64748B",
+  marginBottom: "4px",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.05em",
+};
+const card = {
+  background: "#fff",
+  border: "1px solid #E2E8F0",
+  borderRadius: "12px",
+  padding: "20px",
+  marginBottom: "16px",
+};
+
 export default function ReportBuilder() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -349,6 +377,7 @@ export default function ReportBuilder() {
   const [activeTab, setActiveTab] = useState<
     "details" | "system" | "conditions" | "recommendations"
   >("details");
+  const [dragOver, setDragOver] = useState<string | null>(null);
 
   const [details, setDetails] = useState({
     fileNumber: "",
@@ -380,7 +409,6 @@ export default function ReportBuilder() {
   const [correctionNotes, setCorrectionNotes] = useState("");
   const [propertyPhotos, setPropertyPhotos] = useState<string[]>([]);
   const [defects, setDefects] = useState<Defect[]>([]);
-  const [dragOver, setDragOver] = useState<string | null>(null);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -555,7 +583,6 @@ export default function ReportBuilder() {
         videoTimeH: "",
         videoTimeM: "",
         footageStart: "",
-        footageEnd: "",
         conditionType: "Select Condition Type",
         severity: "Minor",
         narrative: "",
@@ -629,27 +656,7 @@ export default function ReportBuilder() {
       });
   };
 
-  const inp = {
-    height: "36px",
-    borderRadius: "6px",
-    border: "1px solid #E2E8F0",
-    padding: "0 10px",
-    fontSize: "13px",
-    color: "#0F172A",
-    outline: "none",
-    boxSizing: "border-box" as const,
-    background: "#F8FAFC",
-  };
-  const lbl = {
-    display: "block",
-    fontSize: "11px",
-    fontWeight: 600 as const,
-    color: "#64748B",
-    marginBottom: "4px",
-    textTransform: "uppercase" as const,
-    letterSpacing: "0.05em",
-  };
-  const tab = (active: boolean) => ({
+  const tabStyle = (active: boolean) => ({
     padding: "8px 14px",
     borderRadius: "6px",
     fontSize: "13px",
@@ -659,14 +666,8 @@ export default function ReportBuilder() {
     color: active ? "#fff" : "#64748B",
     border: "none",
   });
-  const card = {
-    background: "#fff",
-    border: "1px solid #E2E8F0",
-    borderRadius: "12px",
-    padding: "20px",
-    marginBottom: "16px",
-  };
 
+  // ── TIME BOX with auto-tab ──
   const TimeBox = ({
     hKey,
     mKey,
@@ -678,14 +679,20 @@ export default function ReportBuilder() {
   }) => (
     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
       <input
+        id={`tbh-${hKey}`}
         maxLength={2}
         value={(details as any)[hKey]}
         onChange={(e) => updateDetail(hKey, e.target.value.replace(/\D/g, ""))}
+        onKeyUp={(e) => {
+          if ((e.target as HTMLInputElement).value.length === 2)
+            document.getElementById(`tbm-${mKey}`)?.focus();
+        }}
         placeholder="HH"
         style={{ ...inp, width: "48px", textAlign: "center" }}
       />
       <span style={{ fontWeight: 700, color: "#64748B" }}>:</span>
       <input
+        id={`tbm-${mKey}`}
         maxLength={2}
         value={(details as any)[mKey]}
         onChange={(e) => updateDetail(mKey, e.target.value.replace(/\D/g, ""))}
@@ -695,6 +702,7 @@ export default function ReportBuilder() {
       {["AM", "PM"].map((x) => (
         <button
           key={x}
+          type="button"
           onClick={() => updateDetail(apKey, x)}
           style={{
             padding: "4px 10px",
@@ -721,7 +729,7 @@ export default function ReportBuilder() {
         minHeight: "100vh",
       }}
     >
-      {/* Top bar */}
+      {/* ── TOP BAR ── */}
       <div
         style={{
           background: "#fff",
@@ -829,7 +837,7 @@ export default function ReportBuilder() {
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* ── TABS ── */}
       <div
         style={{
           background: "#fff",
@@ -841,25 +849,25 @@ export default function ReportBuilder() {
         }}
       >
         <button
-          style={tab(activeTab === "details")}
+          style={tabStyle(activeTab === "details")}
           onClick={() => setActiveTab("details")}
         >
           📋 Client & Site Info
         </button>
         <button
-          style={tab(activeTab === "system")}
+          style={tabStyle(activeTab === "system")}
           onClick={() => setActiveTab("system")}
         >
           🔧 Sewer System Info
         </button>
         <button
-          style={tab(activeTab === "conditions")}
+          style={tabStyle(activeTab === "conditions")}
           onClick={() => setActiveTab("conditions")}
         >
           🔍 Pipe Conditions {defects.length > 0 && `(${defects.length})`}
         </button>
         <button
-          style={tab(activeTab === "recommendations")}
+          style={tabStyle(activeTab === "recommendations")}
           onClick={() => setActiveTab("recommendations")}
         >
           📝 End of Report
@@ -926,6 +934,7 @@ export default function ReportBuilder() {
                     />
                   </div>
                 ))}
+
                 <div
                   style={{
                     display: "grid",
@@ -946,7 +955,7 @@ export default function ReportBuilder() {
                     />
                   </div>
                   <div>
-                    <label style={lbl}>Time</label>
+                    <label style={lbl}>Inspection Time</label>
                     <TimeBox
                       hKey="inspectionTimeH"
                       mKey="inspectionTimeM"
@@ -954,6 +963,7 @@ export default function ReportBuilder() {
                     />
                   </div>
                 </div>
+
                 <div style={{ marginBottom: "12px" }}>
                   <label style={lbl}>Building Occupied</label>
                   <select
@@ -968,6 +978,7 @@ export default function ReportBuilder() {
                     <option>Unknown</option>
                   </select>
                 </div>
+
                 <div style={{ marginBottom: "12px" }}>
                   <label style={lbl}>People Present</label>
                   <div
@@ -976,6 +987,7 @@ export default function ReportBuilder() {
                     {peopleOptions.map((p) => (
                       <button
                         key={p}
+                        type="button"
                         onClick={() => togglePerson(p)}
                         style={{
                           padding: "5px 10px",
@@ -998,6 +1010,7 @@ export default function ReportBuilder() {
                     ))}
                   </div>
                 </div>
+
                 <div>
                   <label style={lbl}>Weather / Soil Conditions</label>
                   <div
@@ -1181,6 +1194,7 @@ export default function ReportBuilder() {
                   </div>
                 )}
               </div>
+
               <div style={card}>
                 <h3
                   style={{
@@ -1254,36 +1268,28 @@ export default function ReportBuilder() {
                 <div style={{ marginBottom: "14px" }}>
                   <label style={lbl}>Sewer Video Links (up to 4)</label>
                   {[0, 1, 2, 3].map((i) => (
-                    <div
-                      key={i}
-                      style={{
-                        marginBottom: "8px",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                      }}
-                    >
-                      <span
+                    <div key={i} style={{ marginBottom: "8px" }}>
+                      <label
                         style={{
-                          fontSize: "12px",
-                          color: "#64748B",
-                          minWidth: "60px",
-                          fontWeight: 600,
+                          ...lbl,
+                          fontSize: "10px",
+                          marginBottom: "3px",
                         }}
                       >
                         Link {i + 1}
-                      </span>
+                      </label>
                       <input
                         type="text"
                         value={details.videoLinks[i]}
                         onChange={(e) => updateVideoLink(i, e.target.value)}
                         placeholder="https://youtu.be/..."
-                        style={{ ...inp, flex: 1 }}
+                        style={{ ...inp, width: "100%" }}
                       />
                     </div>
                   ))}
                 </div>
               </div>
+
               <div style={card}>
                 <h3
                   style={{
@@ -1296,7 +1302,7 @@ export default function ReportBuilder() {
                   Piping Section
                 </h3>
                 <div style={{ marginBottom: "12px" }}>
-                  <label style={lbl}>1st Direction</label>
+                  <label style={lbl}>1st Camera Direction</label>
                   <input
                     type="text"
                     value={details.cameraDirection1}
@@ -1308,7 +1314,7 @@ export default function ReportBuilder() {
                   />
                 </div>
                 <div style={{ marginBottom: "12px" }}>
-                  <label style={lbl}>2nd Direction</label>
+                  <label style={lbl}>2nd Camera Direction</label>
                   <input
                     type="text"
                     value={details.cameraDirection2}
@@ -1340,6 +1346,7 @@ export default function ReportBuilder() {
                 </div>
               </div>
             </div>
+
             <div style={card}>
               <h3
                 style={{
@@ -1355,6 +1362,7 @@ export default function ReportBuilder() {
                 {pipeMaterials.map((material) => (
                   <button
                     key={material}
+                    type="button"
                     onClick={() => toggleMaterial(material)}
                     style={{
                       padding: "6px 12px",
@@ -1485,13 +1493,13 @@ export default function ReportBuilder() {
                 key={defect.id}
                 style={{
                   background: "#fff",
-                  border: "1px solid #E2E8F0",
+                  border: `1px solid ${severityConfig[defect.severity]?.color || "#E2E8F0"}`,
                   borderRadius: "12px",
                   marginBottom: "16px",
                   overflow: "hidden",
                 }}
               >
-                {/* Defect header row */}
+                {/* Header row */}
                 <div
                   style={{
                     display: "flex",
@@ -1501,7 +1509,8 @@ export default function ReportBuilder() {
                     borderBottom: defect.expanded
                       ? "1px solid #F1F5F9"
                       : "none",
-                    background: "#FAFAFA",
+                    background:
+                      severityConfig[defect.severity]?.bg || "#FAFAFA",
                     flexWrap: "wrap",
                   }}
                 >
@@ -1515,6 +1524,8 @@ export default function ReportBuilder() {
                   >
                     #{index + 1}
                   </span>
+
+                  {/* Time box with auto-tab */}
                   <div
                     style={{
                       display: "flex",
@@ -1532,6 +1543,7 @@ export default function ReportBuilder() {
                       @
                     </span>
                     <input
+                      id={`dh-${defect.id}`}
                       maxLength={2}
                       value={defect.videoTimeH}
                       onChange={(e) =>
@@ -1541,6 +1553,10 @@ export default function ReportBuilder() {
                           e.target.value.replace(/\D/g, ""),
                         )
                       }
+                      onKeyUp={(e) => {
+                        if ((e.target as HTMLInputElement).value.length === 2)
+                          document.getElementById(`dm-${defect.id}`)?.focus();
+                      }}
                       placeholder="MM"
                       style={{
                         ...inp,
@@ -1551,6 +1567,7 @@ export default function ReportBuilder() {
                     />
                     <span style={{ fontWeight: 700, color: "#64748B" }}>:</span>
                     <input
+                      id={`dm-${defect.id}`}
                       maxLength={2}
                       value={defect.videoTimeM}
                       onChange={(e) =>
@@ -1569,6 +1586,8 @@ export default function ReportBuilder() {
                       }}
                     />
                   </div>
+
+                  {/* Footage */}
                   <div
                     style={{
                       display: "flex",
@@ -1588,6 +1607,7 @@ export default function ReportBuilder() {
                       ft
                     </span>
                   </div>
+
                   <select
                     value={defect.conditionType}
                     onChange={(e) =>
@@ -1599,6 +1619,7 @@ export default function ReportBuilder() {
                       <option key={ct}>{ct}</option>
                     ))}
                   </select>
+
                   <select
                     value={defect.severity}
                     onChange={(e) =>
@@ -1606,7 +1627,7 @@ export default function ReportBuilder() {
                     }
                     style={{
                       ...inp,
-                      width: "160px",
+                      width: "180px",
                       flex: "none",
                       background:
                         severityConfig[defect.severity]?.bg || "#F1F5F9",
@@ -1619,7 +1640,9 @@ export default function ReportBuilder() {
                       <option key={s}>{s}</option>
                     ))}
                   </select>
+
                   <button
+                    type="button"
                     onClick={() => toggleExpand(defect.id)}
                     style={{
                       background: "none",
@@ -1632,6 +1655,7 @@ export default function ReportBuilder() {
                     {defect.expanded ? "▲" : "▼"}
                   </button>
                   <button
+                    type="button"
                     onClick={() => deleteDefect(defect.id)}
                     style={{
                       background: "none",
@@ -1647,10 +1671,8 @@ export default function ReportBuilder() {
 
                 {defect.expanded && (
                   <div style={{ padding: "16px" }}>
-                    {/* ── NARRATIVE LIBRARY ── */}
                     <div style={{ marginBottom: "14px" }}>
                       <label style={lbl}>Detailed Narrative</label>
-
                       {narrativeLibrary[defect.conditionType] && (
                         <div style={{ marginBottom: "10px" }}>
                           <div
@@ -1676,6 +1698,7 @@ export default function ReportBuilder() {
                               (n, ni) => (
                                 <button
                                   key={ni}
+                                  type="button"
                                   onClick={() =>
                                     updateDefect(defect.id, "narrative", n.text)
                                   }
@@ -1717,7 +1740,6 @@ export default function ReportBuilder() {
                           </div>
                         </div>
                       )}
-
                       <textarea
                         value={defect.narrative}
                         onChange={(e) =>
@@ -1725,8 +1747,8 @@ export default function ReportBuilder() {
                         }
                         placeholder={
                           narrativeLibrary[defect.conditionType]
-                            ? "Select a quick fill above or type your own narrative..."
-                            : "e.g. Root intrusion; unable to determine where roots are originating."
+                            ? "Select a quick fill above or type your own..."
+                            : "Type narrative here..."
                         }
                         rows={3}
                         style={{
@@ -1740,6 +1762,7 @@ export default function ReportBuilder() {
                       />
                       {defect.narrative && (
                         <button
+                          type="button"
                           onClick={() =>
                             updateDefect(defect.id, "narrative", "")
                           }
@@ -1758,7 +1781,6 @@ export default function ReportBuilder() {
                       )}
                     </div>
 
-                    {/* Photos */}
                     <label style={lbl}>Photos ({defect.images.length}/6)</label>
                     <div
                       onDragOver={(e) => {
@@ -1849,6 +1871,7 @@ export default function ReportBuilder() {
                               {imgIndex + 1}
                             </div>
                             <button
+                              type="button"
                               onClick={() => removeImage(defect.id, img.id)}
                               style={{
                                 position: "absolute",
@@ -1878,6 +1901,7 @@ export default function ReportBuilder() {
 
             {defects.length > 0 && (
               <button
+                type="button"
                 onClick={addDefect}
                 style={{
                   width: "100%",
@@ -1929,6 +1953,7 @@ export default function ReportBuilder() {
                     {action.options.map((opt) => (
                       <button
                         key={opt}
+                        type="button"
                         onClick={() =>
                           setCorrections((p) => ({ ...p, [action.label]: opt }))
                         }
@@ -1974,6 +1999,7 @@ export default function ReportBuilder() {
                 />
               </div>
             </div>
+
             <div style={card}>
               <h3
                 style={{
