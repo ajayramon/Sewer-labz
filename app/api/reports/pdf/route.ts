@@ -67,22 +67,36 @@ export async function POST(req: NextRequest) {
                       : d.severity === "Suggested Maintenance"
                         ? "#2563EB"
                         : "#16A34A";
-              const sevLabel =
-                d.severity && d.severity !== "No Defect"
-                  ? `; <span style="font-weight:700;color:${sevColor};">${d.severity}</span>`
-                  : "";
+              const sevBg =
+                d.severity === "Major"
+                  ? "#FEF2F2"
+                  : d.severity === "Moderate"
+                    ? "#FFF7ED"
+                    : d.severity === "Minor"
+                      ? "#FFFBEB"
+                      : d.severity === "Suggested Maintenance"
+                        ? "#EFF6FF"
+                        : "#F0FDF4";
               const photosHtml =
                 d.images?.length > 0
                   ? `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:10px;">
-                ${d.images.map((img: any) => `<img src="${img.url}" style="width:100%;height:200px;object-fit:cover;object-position:center;border:1px solid #ddd;border-radius:4px;display:block;" />`).join("")}
+                ${d.images
+                  .map(
+                    (img: any) => `
+                  <div style="text-align:center;">
+                    <img src="${img.url}" style="width:100%;height:200px;object-fit:cover;object-position:center;border:1px solid #ddd;border-radius:4px;display:block;" />
+                  </div>`,
+                  )
+                  .join("")}
                </div>`
                   : "";
               return `
-            <div style="margin-bottom:28px;page-break-inside:avoid;">
+            <div style="margin-bottom:28px;page-break-inside:avoid;border-left:4px solid ${sevColor};padding-left:12px;background:${sevBg};border-radius:0 6px 6px 0;padding:12px 12px 12px 16px;">
               <p style="font-size:13px;line-height:1.7;margin-bottom:8px;">
-                <strong>#${i + 1} @ ${time}${d.footageStart ? ` / ${d.footageStart} ft` : ""} — ${d.conditionType !== "Select Condition Type" ? d.conditionType : "Observation"}${sevLabel}.</strong>
-                ${d.narrative ? ` ${d.narrative}` : ""}
+                <strong>#${i + 1} @ ${time}${d.footageStart ? ` / ${d.footageStart} ft` : ""} — ${d.conditionType !== "Select Condition Type" ? d.conditionType : "Observation"}</strong>
+                ${d.severity ? `<span style="font-weight:700;color:${sevColor};margin-left:6px;">[${d.severity}]</span>` : ""}
               </p>
+              ${d.narrative ? `<p style="font-size:13px;line-height:1.7;color:#374151;">${d.narrative}</p>` : ""}
               ${photosHtml}
             </div>`;
             })
@@ -208,24 +222,111 @@ export async function POST(req: NextRequest) {
   *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
   html, body { width:100%; background:#fff; font-family:Arial,sans-serif; font-size:13px; color:#000; }
 
-  @page { size: letter; margin: 0.45in 0.5in; }
-  @page :first { margin-top: 0; }
+  @page { size: letter; margin: 0.55in 0.55in 0.7in; }
+  @page :first { margin: 0; }
 
-  .page { padding:36px 48px; position:relative; min-height:100vh; page-break-after:always; }
-  .page:last-child { page-break-after:auto; }
+  .page {
+    padding: 36px 48px 80px;
+    position: relative;
+    min-height: 100vh;
+    page-break-after: always;
+  }
+  .page:last-child { page-break-after: auto; }
 
-  .cover { display:flex; flex-direction:column; align-items:center; text-align:center; min-height:100vh; padding:28px 48px 140px; position:relative; page-break-after:always; }
-  .cover-logo { font-size:54px; font-weight:900; letter-spacing:-2px; color:#0F2A4A; margin-bottom:4px; line-height:1; }
-  .cover-logo span { color:#2D8C4E; }
-  .cover-tagline { font-size:15px; color:#2D8C4E; font-weight:700; margin-bottom:3px; }
-  .cover-subtitle { font-size:13px; color:#555; margin-bottom:18px; }
-  .cover-photo-wrap { width:100%; max-width:680px; margin:0 auto; display:flex; justify-content:center; align-items:center; }
-  .cover-photo { width:100%; max-width:680px; height:420px; object-fit:cover; object-position:center center; display:block; border-radius:4px; border:1px solid #ddd; }
-  .cover-no-photo { width:100%; max-width:680px; height:420px; background:#f0f0f0; display:flex; align-items:center; justify-content:center; font-size:14px; color:#999; border-radius:4px; border:1px solid #ddd; }
-  .cover-bottom { position:absolute; bottom:0; left:48px; right:48px; border-top:1px solid #ccc; padding:12px 0 18px; font-size:10.5px; color:#444; line-height:1.75; text-align:center; }
+  /* ── COVER ── */
+  .cover {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    min-height: 100vh;
+    padding: 0;
+    position: relative;
+    page-break-after: always;
+    overflow: hidden;
+  }
+  .cover-top {
+    width: 100%;
+    padding: 32px 48px 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .cover-logo {
+    font-size: 52px;
+    font-weight: 900;
+    letter-spacing: -2px;
+    color: #0F2A4A;
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+  .cover-logo span { color: #2D8C4E; }
+  .cover-tagline { font-size: 15px; color: #2D8C4E; font-weight: 700; margin-bottom: 4px; }
+  .cover-subtitle { font-size: 13px; color: #555; margin-bottom: 16px; }
 
-  .rh { display:flex; justify-content:space-between; border-bottom:1.5px solid #000; padding-bottom:7px; margin-bottom:18px; font-size:11px; color:#555; }
-  .rf { position:absolute; bottom:18px; left:48px; right:48px; border-top:1px solid #ddd; padding-top:7px; font-size:10px; color:#888; text-align:center; line-height:1.6; }
+  .cover-photo-wrap {
+    width: 100%;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    padding: 0 48px;
+  }
+  .cover-photo {
+    width: 100%;
+    height: 400px;
+    object-fit: cover;
+    object-position: center center;
+    display: block;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+  }
+  .cover-no-photo {
+    width: 100%;
+    height: 400px;
+    background: #f0f0f0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: #999;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+  }
+  .cover-bottom {
+    width: 100%;
+    padding: 16px 48px 24px;
+    border-top: 1px solid #ccc;
+    font-size: 10.5px;
+    color: #444;
+    line-height: 1.75;
+    text-align: center;
+    background: #fff;
+  }
+
+  /* ── HEADER / FOOTER ── */
+  .rh {
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 1.5px solid #000;
+    padding-bottom: 7px;
+    margin-bottom: 18px;
+    font-size: 11px;
+    color: #555;
+  }
+  .rf {
+    position: absolute;
+    bottom: 18px;
+    left: 48px;
+    right: 48px;
+    border-top: 1px solid #ddd;
+    padding-top: 7px;
+    font-size: 10px;
+    color: #888;
+    text-align: center;
+    line-height: 1.6;
+  }
 
   .sec-title { font-size:16px; font-weight:900; text-transform:uppercase; text-decoration:underline; text-align:center; margin:18px 0 14px; }
   .sec-sub { font-size:13px; font-weight:700; text-transform:uppercase; border-bottom:1.5px solid #000; padding-bottom:4px; margin-bottom:14px; }
@@ -248,7 +349,8 @@ export async function POST(req: NextRequest) {
   .mat-table tr:nth-child(even) td { background:#f9f9f9; }
 
   @media print {
-    @page { size: letter; margin: 0.45in 0.5in; }
+    @page { size: letter; margin: 0.55in 0.55in 0.7in; }
+    @page :first { margin: 0; }
     body { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
     .page { page-break-after:always; }
     .page:last-child { page-break-after:auto; }
@@ -260,9 +362,16 @@ export async function POST(req: NextRequest) {
 
 <!-- COVER -->
 <div class="cover">
-  <div class="cover-logo">SEWER <span>LABZ</span></div>
-  <div class="cover-tagline">${report.companyTagline || "Don't Let Your Drain Be A Pain!"}</div>
-  <div class="cover-subtitle">Professional Sewer Inspection Report</div>
+  <div class="cover-top">
+    ${
+      report.companyLogo
+        ? `<img src="${report.companyLogo}" style="height:80px;object-fit:contain;margin-bottom:10px;" />`
+        : `<div class="cover-logo">SEWER <span>LABZ</span></div>`
+    }
+    <div class="cover-tagline">${report.companyTagline || "Don't Let Your Drain Be A Pain!"}</div>
+    <div class="cover-subtitle">Professional Sewer Inspection Report</div>
+  </div>
+
   <div class="cover-photo-wrap">
     ${
       photos.length > 0
@@ -270,7 +379,10 @@ export async function POST(req: NextRequest) {
         : `<div class="cover-no-photo">📸 Property Photo</div>`
     }
   </div>
+
   <div class="cover-bottom">
+    <strong>${report.location || ""}</strong>${report.location ? " &nbsp;|&nbsp; " : ""}
+    <strong>${date}</strong><br><br>
     This report was prepared for the client listed above in accordance with our inspection agreement and is subject to the terms and conditions agreed upon therein.
     A verbal consultation is part of this report. If you were not present during the inspection, call our office for a full discussion of the entire report.
     This report is for the sole use of the named client only; it is not to be used by any other party for any reason.<br><br>
@@ -355,8 +467,8 @@ export async function POST(req: NextRequest) {
     </div>
     ${
       photos.length > 0
-        ? `<div style="flex-shrink:0;width:200px;text-align:center;">
-           <img src="${photos[0]}" style="width:200px;height:150px;object-fit:cover;object-position:center center;border:1px solid #ddd;border-radius:3px;display:block;" alt="Property" />
+        ? `<div style="flex-shrink:0;width:220px;text-align:center;">
+           <img src="${photos[0]}" style="width:220px;height:165px;object-fit:cover;object-position:center center;border:1px solid #ddd;border-radius:3px;display:block;" alt="Property" />
          </div>`
         : ""
     }
@@ -368,7 +480,7 @@ export async function POST(req: NextRequest) {
            .slice(1)
            .map(
              (p) =>
-               `<img src="${p}" style="width:100%;height:150px;object-fit:cover;object-position:center center;border:1px solid #ddd;border-radius:3px;" />`,
+               `<img src="${p}" style="width:100%;height:150px;object-fit:cover;object-position:center center;border:1px solid #ddd;border-radius:3px;display:block;" />`,
            )
            .join("")}
        </div>`
@@ -393,7 +505,12 @@ export async function POST(req: NextRequest) {
       : ""
   }
   ${report.pipingNotes ? `<div class="sys-label">Additional Piping Notes</div><div class="sys-value">${report.pipingNotes}</div>` : ""}
-  ${videoLinksHtml ? `<div class="sys-label">Sewer Video Link(s)</div><div class="sys-value">${videoLinksHtml}</div>` : ""}
+  ${
+    videoLinksHtml
+      ? `<div class="sys-label">Sewer Video Link(s)</div>
+       <div class="sys-value" style="display:flex;flex-direction:column;gap:6px;">${videoLinksHtml}</div>`
+      : ""
+  }
   ${footer}
 </div>
 
@@ -407,11 +524,11 @@ export async function POST(req: NextRequest) {
 
 <!-- GENERAL NOTES -->
 ${
-  report.generalNotes
+  report.notes || report.generalNotes
     ? `<div class="page">
        ${header(date, ref)}
        <div class="sec-sub">General Notes / Comments</div>
-       <p style="font-size:13px;line-height:1.85;white-space:pre-wrap;">${report.generalNotes}</p>
+       <p style="font-size:13px;line-height:1.85;white-space:pre-wrap;">${report.notes || report.generalNotes}</p>
        ${footer}
      </div>`
     : ""
@@ -422,7 +539,14 @@ ${
   ${header(date, ref)}
   <div class="sec-sub">Corrective Action Recommendations</div>
   ${correctiveRows || '<p style="color:#999;font-size:13px;">No corrective actions selected.</p>'}
-  ${report.correctionNotes ? `<div style="margin-top:14px;"><div class="sys-label">Additional Notes</div><div class="sys-value" style="white-space:pre-wrap;">${report.correctionNotes}</div></div>` : ""}
+  ${
+    report.correctionNotes
+      ? `<div style="margin-top:14px;">
+         <div class="sys-label">Additional Notes</div>
+         <div class="sys-value" style="white-space:pre-wrap;">${report.correctionNotes}</div>
+       </div>`
+      : ""
+  }
   <div style="margin-top:20px;padding:14px;background:#F8FAFC;border-radius:5px;border:1px solid #eee;">
     <p style="font-size:13px;line-height:1.8;margin-bottom:8px;">Given the condition(s) above we recommend full evaluations and/or corrections with written findings and costs to cure by a competent licensed plumbing contractor before the end/close of the inspection contingency period.</p>
     <p style="font-size:13px;line-height:1.8;">Recommend sewer inspections after repairs are made to ensure efficacy of work and to inspect any areas of the sewer lateral not visible due to defect(s).</p>
@@ -487,14 +611,8 @@ ${
     ${new Date().toLocaleDateString("en-US", { month: "long", day: "2-digit", year: "numeric" })}<br>
     <strong>This report is not to be used for the purposes of substitute disclosure.</strong>
   </div>
+  ${footer}
 </div>
-
-<script>
-  document.title = "";
-  if (window.opener) {
-    setTimeout(function() { window.print(); }, 1200);
-  }
-</script>
 
 </body>
 </html>`;
