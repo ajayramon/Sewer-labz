@@ -1,23 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminDb } from "@/app/Lib/firebase-admin";
+import { adminDb } from "@/app/Lib/firebase-admin";
 
 export async function GET(req: NextRequest) {
   try {
     const uid = req.headers.get("x-user-id");
     if (!uid) return NextResponse.json({ reports: [] });
 
-    const snap = await getAdminDb()
+    const snap = await adminDb
       .collection("users")
       .doc(uid)
       .collection("reports")
       .orderBy("updatedAt", "desc")
       .get();
 
-    const reports = snap.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
-
+    const reports = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
     return NextResponse.json({ reports });
   } catch (err) {
     console.error("GET /api/reports", err);
@@ -33,7 +29,6 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const { report, defects } = body;
-
     const id = report.id || Date.now().toString();
     const now = new Date().toISOString();
 
@@ -45,7 +40,7 @@ export async function POST(req: NextRequest) {
       updatedAt: now,
     };
 
-    await getAdminDb()
+    await adminDb
       .collection("users")
       .doc(uid)
       .collection("reports")

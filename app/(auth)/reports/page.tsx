@@ -18,27 +18,22 @@ type Report = {
 
 export default function ReportsPage() {
   const router = useRouter();
+  const [uid, setUid] = useState<string | null>(null);
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"ALL" | "DRAFT" | "COMPLETE">("ALL");
   const [generating, setGenerating] = useState<string | null>(null);
   const [markingDone, setMarkingDone] = useState<string | null>(null);
-  const [uid, setUid] = useState<string | null>(null);
 
-  // Get Firebase UID first
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
-      if (u) {
-        setUid(u.uid);
-      } else {
-        router.replace("/login");
-      }
+      if (u) setUid(u.uid);
+      else router.replace("/login");
     });
     return () => unsub();
   }, []);
 
-  // Load reports once we have UID
   useEffect(() => {
     if (!uid) return;
     loadReports(uid);
@@ -47,23 +42,18 @@ export default function ReportsPage() {
   const loadReports = async (userId: string) => {
     setLoading(true);
     try {
-      // Load localStorage immediately for fast display
       const local = localStorage.getItem("sewer_reports");
       if (local) setReports(JSON.parse(local));
 
-      // Then load from Firestore
       const res = await fetch("/api/reports", {
         headers: { "x-user-id": userId },
       });
       const data = await res.json();
-
       if (data.reports?.length) {
         setReports(data.reports);
-        // Keep localStorage in sync
         localStorage.setItem("sewer_reports", JSON.stringify(data.reports));
       }
     } catch {
-      // Keep whatever localStorage had
     } finally {
       setLoading(false);
     }
@@ -72,7 +62,6 @@ export default function ReportsPage() {
   const handlePDF = async (report: Report) => {
     setGenerating(report.id);
     try {
-      // Try Firestore first, fall back to localStorage
       let data: any = null;
       try {
         const res = await fetch(`/api/reports/${report.id}`, {
@@ -97,7 +86,7 @@ export default function ReportsPage() {
         win.document.open();
         win.document.write(html);
         win.document.close();
-        setTimeout(() => win.print(), 2500);
+        setTimeout(() => win.print(), 800);
       }
     } catch {
       alert("Failed to generate PDF.");
@@ -107,7 +96,6 @@ export default function ReportsPage() {
   };
 
   const handleEdit = async (report: Report) => {
-    // Try Firestore first
     try {
       const res = await fetch(`/api/reports/${report.id}`, {
         headers: { "x-user-id": uid! },
@@ -123,8 +111,6 @@ export default function ReportsPage() {
   const handleToggleStatus = async (report: Report) => {
     setMarkingDone(report.id);
     const newStatus = report.status === "COMPLETE" ? "DRAFT" : "COMPLETE";
-
-    // Optimistic UI update
     const updated = reports.map((r) =>
       r.id === report.id
         ? { ...r, status: newStatus as "DRAFT" | "COMPLETE" }
@@ -132,25 +118,20 @@ export default function ReportsPage() {
     );
     setReports(updated);
     localStorage.setItem("sewer_reports", JSON.stringify(updated));
-
-    // Save to Firestore
     await fetch(`/api/reports/${report.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json", "x-user-id": uid! },
       body: JSON.stringify({ report: { ...report, status: newStatus } }),
     }).catch(() => {});
-
     setTimeout(() => setMarkingDone(null), 800);
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this report? This cannot be undone.")) return;
-
     const updated = reports.filter((r) => r.id !== id);
     setReports(updated);
     localStorage.setItem("sewer_reports", JSON.stringify(updated));
     localStorage.removeItem(`report_${id}`);
-
     await fetch(`/api/reports/${id}`, {
       method: "DELETE",
       headers: { "x-user-id": uid! },
@@ -159,12 +140,12 @@ export default function ReportsPage() {
 
   const filtered = reports.filter((r) => {
     const q = search.toLowerCase();
-    const matchSearch =
+    const match =
       r.title?.toLowerCase().includes(q) ||
       r.clientName?.toLowerCase().includes(q) ||
       r.location?.toLowerCase().includes(q) ||
       r.fileNumber?.toLowerCase().includes(q);
-    return matchSearch && (filter === "ALL" || r.status === filter);
+    return match && (filter === "ALL" || r.status === filter);
   });
 
   const inp: React.CSSProperties = {
@@ -449,7 +430,7 @@ export default function ReportsPage() {
                           ? "✓"
                           : report.status === "COMPLETE"
                             ? "↩ Draft"
-                            : "✓ Complete"}
+                            : "✓ Done"}
                       </button>
                       <button
                         onClick={() => handleDelete(report.id)}
@@ -476,7 +457,7 @@ export default function ReportsPage() {
             gap: "16px",
           }}
         >
-          <span>✓ Complete — marks report as done</span>
+          <span>✓ Done — marks report as complete</span>
           <span>↩ Draft — moves back to draft</span>
         </div>
       )}

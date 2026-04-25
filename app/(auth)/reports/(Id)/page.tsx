@@ -5,19 +5,44 @@ import { useRouter, useParams } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/app/Lib/firebase";
 
+const severityColor: Record<string, { bg: string; color: string }> = {
+  "No Defect": { bg: "#F0FDF4", color: "#16A34A" },
+  Minor: { bg: "#FFFBEB", color: "#D97706" },
+  Moderate: { bg: "#FFF7ED", color: "#EA580C" },
+  Major: { bg: "#FEF2F2", color: "#DC2626" },
+  "Suggested Maintenance": { bg: "#EFF6FF", color: "#2563EB" },
+};
+
+function Spinner() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      style={{ animation: "sl-spin 0.8s linear infinite", flexShrink: 0 }}
+    >
+      <style>{`@keyframes sl-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
+      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+    </svg>
+  );
+}
+
 export default function ViewReportPage() {
   const router = useRouter();
   const params = useParams();
   const id = params?.id as string;
 
+  const [uid, setUid] = useState<string | null>(null);
   const [report, setReport] = useState<any>(null);
   const [defects, setDefects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [pdfError, setPdfError] = useState("");
-  const [uid, setUid] = useState<string | null>(null);
 
-  // ── Auth ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       if (u) setUid(u.uid);
@@ -26,7 +51,6 @@ export default function ViewReportPage() {
     return () => unsub();
   }, []);
 
-  // ── Load report ───────────────────────────────────────────────────────────
   useEffect(() => {
     if (!id || !uid) return;
     loadReport(uid);
@@ -44,12 +68,7 @@ export default function ViewReportPage() {
         setDefects(data.defects || []);
         localStorage.setItem(`report_${id}`, JSON.stringify(data));
       } else {
-        const local = localStorage.getItem(`report_${id}`);
-        if (local) {
-          const data = JSON.parse(local);
-          setReport(data.report || data);
-          setDefects(data.defects || []);
-        }
+        throw new Error("Not found");
       }
     } catch {
       const local = localStorage.getItem(`report_${id}`);
@@ -63,7 +82,6 @@ export default function ViewReportPage() {
     }
   };
 
-  // ── Edit ──────────────────────────────────────────────────────────────────
   const handleEdit = async () => {
     try {
       const res = await fetch(`/api/reports/${id}`, {
@@ -72,9 +90,6 @@ export default function ViewReportPage() {
       if (res.ok) {
         const data = await res.json();
         localStorage.setItem(`report_edit_${id}`, JSON.stringify(data));
-      } else {
-        const local = localStorage.getItem(`report_${id}`);
-        if (local) localStorage.setItem(`report_edit_${id}`, local);
       }
     } catch {
       const local = localStorage.getItem(`report_${id}`);
@@ -83,13 +98,10 @@ export default function ViewReportPage() {
     router.push(`/reports/new?edit=${id}`);
   };
 
-  // ── PDF — now downloads a real PDF via Puppeteer ──────────────────────────
   const handlePDF = async () => {
     setGenerating(true);
     setPdfError("");
-
     try {
-      // Get latest data — Firestore first, localStorage fallback
       let data: any = null;
       try {
         const res = await fetch(`/api/reports/${id}`, {
@@ -103,48 +115,56 @@ export default function ViewReportPage() {
         data = local ? JSON.parse(local) : { report, defects };
       }
 
-      // ✅ POST to Puppeteer PDF route — returns real PDF binary
       const res = await fetch("/api/reports/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.error || `Server error ${res.status}`);
+      const html = await res.text();
+      const win = window.open("", "_blank");
+      if (win) {
+        win.document.write(html);
+        win.document.close();
+        setTimeout(() => win.print(), 800);
       }
-
-      // ✅ Stream PDF blob → trigger browser download
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      const ref = report?.fileNumber || report?.clientName || "Report";
-      const date = report?.inspectedAt || "";
-      a.href = url;
-      a.download = `SewerLabz-${ref}-${date}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
     } catch (err: any) {
-      console.error("[PDF]", err);
-      setPdfError(err?.message || "PDF generation failed. Please try again.");
+      setPdfError(err?.message || "PDF generation failed.");
     } finally {
       setGenerating(false);
     }
   };
 
-  // ── Severity colors ───────────────────────────────────────────────────────
-  const severityColor: Record<string, string> = {
-    "No Defect": "#16A34A",
-    Minor: "#D97706",
-    Moderate: "#EA580C",
-    Major: "#DC2626",
-    "Suggested Maintenance": "#2563EB",
+  const card: React.CSSProperties = {
+    background: "#fff",
+    border: "1px solid #E2E8F0",
+    borderRadius: "12px",
+    padding: "20px",
+    marginBottom: "16px",
+  };
+  const lbl: React.CSSProperties = {
+    fontSize: "11px",
+    fontWeight: 700,
+    color: "#94A3B8",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    marginBottom: "2px",
+  };
+  const val: React.CSSProperties = {
+    fontSize: "14px",
+    color: "#0F2A4A",
+    fontWeight: 500,
+  };
+  const secTitle: React.CSSProperties = {
+    fontSize: "14px",
+    fontWeight: 700,
+    color: "#0F2A4A",
+    margin: "0 0 16px",
+    textTransform: "uppercase",
+    borderBottom: "1px solid #E2E8F0",
+    paddingBottom: "8px",
   };
 
-  // ── Loading / not found states ────────────────────────────────────────────
   if (loading)
     return (
       <div
@@ -187,7 +207,7 @@ export default function ViewReportPage() {
             Report not found
           </div>
           <button
-            onClick={() => router.push("/")}
+            onClick={() => router.push("/reports")}
             style={{
               background: "#0F2A4A",
               color: "#fff",
@@ -198,32 +218,11 @@ export default function ViewReportPage() {
               fontWeight: 600,
             }}
           >
-            ← Back to Dashboard
+            ← Back to Reports
           </button>
         </div>
       </div>
     );
-
-  const card: React.CSSProperties = {
-    background: "#fff",
-    border: "1px solid #E2E8F0",
-    borderRadius: "12px",
-    padding: "20px",
-    marginBottom: "16px",
-  };
-  const lbl: React.CSSProperties = {
-    fontSize: "11px",
-    fontWeight: 700,
-    color: "#94A3B8",
-    textTransform: "uppercase",
-    letterSpacing: "0.05em",
-    marginBottom: "2px",
-  };
-  const val: React.CSSProperties = {
-    fontSize: "14px",
-    color: "#0F2A4A",
-    fontWeight: 500,
-  };
 
   return (
     <div
@@ -233,7 +232,7 @@ export default function ViewReportPage() {
         minHeight: "100vh",
       }}
     >
-      {/* ── Top bar ──────────────────────────────────────────────────────── */}
+      {/* Top bar */}
       <div
         style={{
           background: "#fff",
@@ -287,7 +286,6 @@ export default function ViewReportPage() {
           }}
         >
           <div style={{ display: "flex", gap: "10px" }}>
-            {/* Edit button */}
             <button
               onClick={handleEdit}
               style={{
@@ -303,8 +301,6 @@ export default function ViewReportPage() {
             >
               ✏️ Edit Report
             </button>
-
-            {/* ✅ PDF download button — now downloads real PDF */}
             <button
               onClick={handlePDF}
               disabled={generating}
@@ -320,15 +316,12 @@ export default function ViewReportPage() {
                 display: "flex",
                 alignItems: "center",
                 gap: "6px",
-                transition: "background 0.2s",
               }}
             >
               {generating ? <Spinner /> : "📄"}
-              {generating ? "Generating PDF…" : "Download PDF"}
+              {generating ? "Generating..." : "Download PDF"}
             </button>
           </div>
-
-          {/* Error message under buttons */}
           {pdfError && (
             <span
               style={{
@@ -344,23 +337,11 @@ export default function ViewReportPage() {
         </div>
       </div>
 
-      {/* ── Content ──────────────────────────────────────────────────────── */}
+      {/* Content */}
       <div style={{ padding: "24px", maxWidth: "1000px", margin: "0 auto" }}>
         {/* Client & Site Info */}
         <div style={card}>
-          <h3
-            style={{
-              fontSize: "14px",
-              fontWeight: 700,
-              color: "#0F2A4A",
-              margin: "0 0 16px",
-              textTransform: "uppercase",
-              borderBottom: "1px solid #E2E8F0",
-              paddingBottom: "8px",
-            }}
-          >
-            Client & Site Information
-          </h3>
+          <h3 style={secTitle}>Client & Site Information</h3>
           <div
             style={{
               display: "grid",
@@ -396,29 +377,20 @@ export default function ViewReportPage() {
 
           {report.propertyPhotos?.length > 0 && (
             <div style={{ marginTop: "16px" }}>
-              <div style={lbl}>Property Photos</div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(3,1fr)",
-                  gap: "8px",
-                  marginTop: "8px",
-                }}
-              >
-                {report.propertyPhotos.map((photo: string, i: number) => (
-                  <img
-                    key={i}
-                    src={photo}
-                    alt={`Property ${i + 1}`}
-                    style={{
-                      width: "100%",
-                      height: "140px",
-                      objectFit: "cover",
-                      borderRadius: "8px",
-                      border: "1px solid #E2E8F0",
-                    }}
-                  />
-                ))}
+              <div style={lbl}>Cover Photo</div>
+              <div style={{ marginTop: "8px", maxWidth: "400px" }}>
+                <img
+                  src={report.propertyPhotos[0]}
+                  alt="Cover"
+                  style={{
+                    width: "100%",
+                    height: "220px",
+                    objectFit: "cover",
+                    borderRadius: "8px",
+                    border: "1px solid #E2E8F0",
+                    display: "block",
+                  }}
+                />
               </div>
             </div>
           )}
@@ -426,25 +398,15 @@ export default function ViewReportPage() {
 
         {/* Sewer System Info */}
         <div style={card}>
-          <h3
-            style={{
-              fontSize: "14px",
-              fontWeight: 700,
-              color: "#0F2A4A",
-              margin: "0 0 16px",
-              textTransform: "uppercase",
-              borderBottom: "1px solid #E2E8F0",
-              paddingBottom: "8px",
-            }}
-          >
-            Sewer System Information
-          </h3>
+          <h3 style={secTitle}>Sewer System Information</h3>
+
           {report.cleanoutLocation && (
             <div style={{ marginBottom: "12px" }}>
               <div style={lbl}>Cleanout Location</div>
               <div style={val}>{report.cleanoutLocation}</div>
             </div>
           )}
+
           {report.pipeMaterials?.length > 0 && (
             <div style={{ marginBottom: "12px" }}>
               <div style={lbl}>Pipe Materials</div>
@@ -477,38 +439,85 @@ export default function ViewReportPage() {
               </div>
             </div>
           )}
-          {report.cameraDirection1 && (
-            <div style={{ marginBottom: "12px" }}>
-              <div style={lbl}>1st Camera Direction</div>
-              <div style={val}>{report.cameraDirection1}</div>
+
+          {/* Piping Section */}
+          {(report.cameraDirection1 || report.cameraDirection2) && (
+            <div
+              style={{
+                marginBottom: "12px",
+                padding: "12px",
+                background: "#F8FAFC",
+                borderRadius: "8px",
+                border: "1px solid #E2E8F0",
+              }}
+            >
+              <div style={{ ...lbl, marginBottom: "8px" }}>
+                Piping Section — Camera Directions
+              </div>
+              {report.cameraDirection1 && (
+                <div style={{ marginBottom: "8px" }}>
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      color: "#2D8C4E",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    1st Direction:{" "}
+                  </span>
+                  <span style={{ fontSize: "13px", color: "#374151" }}>
+                    {report.cameraDirection1}
+                  </span>
+                </div>
+              )}
+              {report.cameraDirection2 && (
+                <div>
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      color: "#2D8C4E",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    2nd Direction:{" "}
+                  </span>
+                  <span style={{ fontSize: "13px", color: "#374151" }}>
+                    {report.cameraDirection2}
+                  </span>
+                </div>
+              )}
             </div>
           )}
-          {report.cameraDirection2 && (
-            <div style={{ marginBottom: "12px" }}>
-              <div style={lbl}>2nd Camera Direction</div>
-              <div style={val}>{report.cameraDirection2}</div>
-            </div>
-          )}
+
           {report.pipingNotes && (
             <div style={{ marginBottom: "12px" }}>
               <div style={lbl}>Piping Notes</div>
               <div style={val}>{report.pipingNotes}</div>
             </div>
           )}
+
           {report.videoLinks?.filter((l: string) => l).length > 0 && (
-            <div style={{ marginBottom: "12px" }}>
+            <div>
               <div style={lbl}>Video Links</div>
               {report.videoLinks
                 .filter((l: string) => l)
                 .map((link: string, i: number) => (
-                  <div key={i} style={{ marginTop: "4px" }}>
+                  <div key={i} style={{ marginTop: "6px" }}>
                     <a
                       href={link}
                       target="_blank"
                       rel="noreferrer"
-                      style={{ color: "#2563EB", fontSize: "13px" }}
+                      style={{
+                        color: "#2563EB",
+                        fontSize: "13px",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
                     >
-                      Video {i + 1}: {link}
+                      🎥 Video {i + 1}: {link}
                     </a>
                   </div>
                 ))}
@@ -519,27 +528,17 @@ export default function ViewReportPage() {
         {/* Pipe Conditions */}
         {defects.length > 0 && (
           <div style={card}>
-            <h3
-              style={{
-                fontSize: "14px",
-                fontWeight: 700,
-                color: "#0F2A4A",
-                margin: "0 0 16px",
-                textTransform: "uppercase",
-                borderBottom: "1px solid #E2E8F0",
-                paddingBottom: "8px",
-              }}
-            >
-              Pipe Conditions ({defects.length})
-            </h3>
+            <h3 style={secTitle}>Pipe Conditions ({defects.length})</h3>
             {defects.map((d: any, i: number) => (
               <div
-                key={d.id}
+                key={d.id || i}
                 style={{
-                  border: "1px solid #E2E8F0",
+                  border: `1px solid ${severityColor[d.severity]?.color || "#E2E8F0"}`,
+                  borderLeft: `4px solid ${severityColor[d.severity]?.color || "#E2E8F0"}`,
                   borderRadius: "8px",
                   padding: "14px",
                   marginBottom: "12px",
+                  background: severityColor[d.severity]?.bg || "#fff",
                 }}
               >
                 <div
@@ -554,10 +553,25 @@ export default function ViewReportPage() {
                   <span style={{ fontWeight: 700, color: "#0F2A4A" }}>
                     #{i + 1}
                   </span>
-                  <span style={{ fontSize: "13px", color: "#64748B" }}>
-                    @ {d.videoTimeH}:{d.videoTimeM}
-                    {d.footageStart ? ` / ${d.footageStart} ft` : ""}
-                  </span>
+                  {(d.videoTimeH || d.videoTimeM) && (
+                    <span
+                      style={{
+                        fontSize: "12px",
+                        color: "#64748B",
+                        background: "#fff",
+                        padding: "2px 8px",
+                        borderRadius: "20px",
+                        border: "1px solid #E2E8F0",
+                      }}
+                    >
+                      @ {d.videoTimeH || "--"}:{d.videoTimeM || "--"}
+                    </span>
+                  )}
+                  {d.footageStart && (
+                    <span style={{ fontSize: "12px", color: "#64748B" }}>
+                      {d.footageStart} ft
+                    </span>
+                  )}
                   <span
                     style={{
                       fontWeight: 600,
@@ -565,7 +579,9 @@ export default function ViewReportPage() {
                       color: "#0F2A4A",
                     }}
                   >
-                    {d.conditionType}
+                    {d.conditionType !== "Select Condition Type"
+                      ? d.conditionType
+                      : "Observation"}
                   </span>
                   {d.severity && (
                     <span
@@ -574,7 +590,8 @@ export default function ViewReportPage() {
                         borderRadius: "20px",
                         fontSize: "11px",
                         fontWeight: 700,
-                        background: severityColor[d.severity] || "#64748B",
+                        background:
+                          severityColor[d.severity]?.color || "#64748B",
                         color: "#fff",
                       }}
                     >
@@ -582,18 +599,20 @@ export default function ViewReportPage() {
                     </span>
                   )}
                 </div>
+
                 {d.narrative && (
                   <p
                     style={{
                       fontSize: "13px",
                       color: "#374151",
-                      lineHeight: "1.6",
-                      marginBottom: "8px",
+                      lineHeight: "1.7",
+                      margin: "0 0 8px",
                     }}
                   >
                     {d.narrative}
                   </p>
                 )}
+
                 {d.images?.length > 0 && (
                   <div
                     style={{
@@ -605,7 +624,7 @@ export default function ViewReportPage() {
                   >
                     {d.images.map((img: any, idx: number) => (
                       <img
-                        key={img.id}
+                        key={img.id || idx}
                         src={img.url}
                         alt={`Photo ${idx + 1}`}
                         style={{
@@ -614,6 +633,7 @@ export default function ViewReportPage() {
                           objectFit: "cover",
                           borderRadius: "6px",
                           border: "1px solid #E2E8F0",
+                          display: "block",
                         }}
                       />
                     ))}
@@ -625,85 +645,80 @@ export default function ViewReportPage() {
         )}
 
         {/* General Notes */}
-        {report.generalNotes && (
+        {(report.notes || report.generalNotes) && (
           <div style={card}>
-            <h3
-              style={{
-                fontSize: "14px",
-                fontWeight: 700,
-                color: "#0F2A4A",
-                margin: "0 0 12px",
-                textTransform: "uppercase",
-                borderBottom: "1px solid #E2E8F0",
-                paddingBottom: "8px",
-              }}
-            >
-              General Notes
-            </h3>
+            <h3 style={secTitle}>General Notes</h3>
             <p
               style={{
                 fontSize: "14px",
                 color: "#374151",
                 lineHeight: "1.8",
                 whiteSpace: "pre-wrap",
+                margin: 0,
               }}
             >
-              {report.generalNotes}
+              {report.notes || report.generalNotes}
             </p>
           </div>
         )}
 
         {/* Corrective Actions */}
         {report.corrections &&
-          Object.values(report.corrections).some((v) => v && v !== "N/A") && (
+          Object.values(report.corrections).some(
+            (v: any) => v && v !== "N/A",
+          ) && (
             <div style={card}>
-              <h3
+              <h3 style={secTitle}>Corrective Action Recommendations</h3>
+              <div
                 style={{
-                  fontSize: "14px",
-                  fontWeight: 700,
-                  color: "#0F2A4A",
-                  margin: "0 0 12px",
-                  textTransform: "uppercase",
-                  borderBottom: "1px solid #E2E8F0",
-                  paddingBottom: "8px",
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "10px",
                 }}
               >
-                Corrective Action Recommendations
-              </h3>
-              {Object.entries(report.corrections)
-                .filter(([, v]) => v && v !== "N/A")
-                .map(([label, value]) => (
-                  <div
-                    key={label}
-                    style={{
-                      display: "flex",
-                      gap: "12px",
-                      marginBottom: "8px",
-                    }}
-                  >
-                    <span
+                {Object.entries(report.corrections)
+                  .filter(([, v]) => v && v !== "N/A")
+                  .map(([label, value]) => (
+                    <div
+                      key={label}
                       style={{
-                        fontWeight: 700,
-                        fontSize: "12px",
-                        color: "#64748B",
-                        textTransform: "uppercase",
-                        minWidth: "160px",
+                        padding: "10px",
+                        background: "#F8FAFC",
+                        borderRadius: "8px",
+                        border: "1px solid #E2E8F0",
                       }}
                     >
-                      {label}
-                    </span>
-                    <span style={{ fontSize: "13px", color: "#0F2A4A" }}>
-                      {value as string}
-                    </span>
-                  </div>
-                ))}
+                      <div
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          color: "#64748B",
+                          textTransform: "uppercase",
+                          marginBottom: "4px",
+                        }}
+                      >
+                        {label}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "13px",
+                          color: "#0F2A4A",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {value as string}
+                      </div>
+                    </div>
+                  ))}
+              </div>
               {report.correctionNotes && (
                 <div
                   style={{
                     marginTop: "12px",
-                    padding: "10px",
+                    padding: "12px",
                     background: "#F8FAFC",
-                    borderRadius: "6px",
+                    borderRadius: "8px",
+                    border: "1px solid #E2E8F0",
                   }}
                 >
                   <div style={lbl}>Additional Notes</div>
@@ -713,6 +728,7 @@ export default function ViewReportPage() {
                       color: "#374151",
                       marginTop: "4px",
                       whiteSpace: "pre-wrap",
+                      lineHeight: "1.7",
                     }}
                   >
                     {report.correctionNotes}
@@ -723,24 +739,5 @@ export default function ViewReportPage() {
           )}
       </div>
     </div>
-  );
-}
-
-// ── Spinner icon ──────────────────────────────────────────────────────────────
-function Spinner() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      style={{ animation: "sl-spin 0.8s linear infinite", flexShrink: 0 }}
-    >
-      <style>{`@keyframes sl-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
-      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-    </svg>
   );
 }

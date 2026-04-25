@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminDb } from "@/app/Lib/firebase-admin";
+import { adminDb } from "@/app/Lib/firebase-admin";
 
 export async function GET(
   req: NextRequest,
@@ -11,7 +11,7 @@ export async function GET(
     if (!uid)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const doc = await getAdminDb()
+    const doc = await adminDb
       .collection("users")
       .doc(uid)
       .collection("reports")
@@ -21,7 +21,12 @@ export async function GET(
     if (!doc.exists)
       return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    return NextResponse.json({ id: doc.id, ...doc.data() });
+    const data = doc.data() as any;
+    return NextResponse.json({
+      id: doc.id,
+      report: data,
+      defects: data.defects || [],
+    });
   } catch (err) {
     console.error("GET /api/reports/[id]", err);
     return NextResponse.json(
@@ -51,14 +56,14 @@ export async function PATCH(
       updatedAt: new Date().toISOString(),
     };
 
-    await getAdminDb()
+    await adminDb
       .collection("users")
       .doc(uid)
       .collection("reports")
       .doc(id)
       .set(data, { merge: true });
 
-    return NextResponse.json(data);
+    return NextResponse.json({ report: data, defects: data.defects });
   } catch (err) {
     console.error("PATCH /api/reports/[id]", err);
     return NextResponse.json(
@@ -78,7 +83,7 @@ export async function DELETE(
     if (!uid)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    await getAdminDb()
+    await adminDb
       .collection("users")
       .doc(uid)
       .collection("reports")
