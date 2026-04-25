@@ -1,8 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "@/app/Lib/firebase";
+import { useState } from "react";
 
 type DefectImage = { id: string; url: string; name: string };
 type Defect = {
@@ -35,7 +32,6 @@ const conditionTypes = [
   "Belly/Positive Grade",
   "Scale Buildup",
   "Infiltration",
-  "Exfiltration",
   "Collapse",
   "Other",
 ];
@@ -66,7 +62,6 @@ const peopleOptions = [
   "Contractor",
   "Other",
 ];
-
 const weatherOptions = [
   "Sunny",
   "Cloudy",
@@ -99,45 +94,102 @@ const correctiveActions = [
   {
     label: "Root Removal",
     options: [
+      "N/A",
       "Hydro Jet",
       "Cable Cut",
       "Mechanical Root Cutter",
       "Chemical Treatment",
-      "N/A",
     ],
   },
   {
     label: "Pipe Repair",
     options: [
+      "N/A",
       "Spot Repair",
       "CIPP Liner",
       "Full Replacement",
       "Pipe Bursting",
-      "N/A",
     ],
   },
   {
     label: "Joint Repair",
     options: [
+      "N/A",
       "Chemical Grouting",
       "Internal Seal",
       "Spot Liner",
       "Full Replacement",
-      "N/A",
     ],
   },
   {
     label: "Cleaning",
-    options: ["Hydro Jet", "Mechanical Clean", "Chemical Clean", "N/A"],
+    options: ["N/A", "Hydro Jet", "Mechanical Clean", "Chemical Clean"],
   },
   {
     label: "Further Investigation",
     options: [
+      "N/A",
       "Re-inspect After Cleaning",
       "Excavation",
       "Smoke Test",
       "Dye Test",
+    ],
+  },
+];
+
+const endOfReportOptions = [
+  {
+    label: "General Recommendation",
+    key: "rec1",
+    options: [
+      "Select...",
+      "Given the condition(s) above we recommend full evaluations and/or corrections with written findings and costs to cure by a competent licensed plumbing contractor before the end/close of the inspection contingency period.",
+      "No defects found — sewer line is in acceptable condition at time of inspection.",
+      "Minor defects noted — monitor and re-inspect within 12 months.",
+      "Major defects found — immediate repair recommended prior to closing.",
+    ],
+  },
+  {
+    label: "Post Repair Recommendation",
+    key: "rec2",
+    options: [
+      "Select...",
+      "Recommend sewer inspections after repairs are made to ensure efficacy of work.",
+      "Re-inspection not required if repairs are made by a licensed contractor with written warranty.",
+      "Re-inspect after hydro jetting and root removal to confirm clearance.",
+    ],
+  },
+  {
+    label: "Liner Recommendation",
+    key: "rec3",
+    options: [
+      "Select...",
       "N/A",
+      'If a liner is installed, ensure they mark the cleanout "DO NOT CABLE — LINER INSTALLED".',
+      "Lining is recommended as a less invasive and cost-friendly option to replacement.",
+      "Full pipe replacement is recommended over lining given extent of deterioration.",
+    ],
+  },
+  {
+    label: "Cleaning Recommendation",
+    key: "rec4",
+    options: [
+      "Select...",
+      "N/A",
+      "Hydro jet/blade cutting is recommended to remove roots and de-scale the pipe.",
+      "Chemical root treatment is recommended to inhibit root re-growth.",
+      "High pressure hydro jetting is recommended before re-inspection.",
+    ],
+  },
+  {
+    label: "Warranty Recommendation",
+    key: "rec5",
+    options: [
+      "Select...",
+      "N/A",
+      "Ask for all work to be done with a transferable warranty.",
+      "Ensure written warranty is provided for all repairs performed.",
+      "Request a minimum 1-year warranty on all repair work.",
     ],
   },
 ];
@@ -150,234 +202,13 @@ const severityConfig: Record<string, { bg: string; color: string }> = {
   "Suggested Maintenance": { bg: "#EFF6FF", color: "#2563EB" },
 };
 
-const narrativeLibrary: Record<string, { label: string; text: string }[]> = {
-  "Root Intrusion": [
-    {
-      label: "Minor",
-      text: "Minor root intrusion observed at joint. Roots occupy approximately 10-25% of pipe diameter. No immediate obstruction noted. Recommend periodic hydro-jetting to prevent escalation.",
-    },
-    {
-      label: "Moderate",
-      text: "Moderate root intrusion observed. Root mass occupies approximately 25-50% of pipe cross-section causing partial flow restriction. Hydro-jetting with root cutting nozzle recommended prior to close of escrow.",
-    },
-    {
-      label: "Major",
-      text: "Significant root intrusion observed. Root mass occupies more than 50% of pipe cross-section causing substantial obstruction. Immediate hydro-jetting, root treatment, and structural assessment required. Consult licensed plumber prior to close of escrow.",
-    },
-    {
-      label: "Cannot Determine",
-      text: "Root intrusion observed; unable to determine origin. Cable or hydro jet recommended to cut and flush roots. Re-inspection recommended after cleaning to assess pipe integrity.",
-    },
-  ],
-  "Offset Joint": [
-    {
-      label: "Minor",
-      text: "Minor pipe offset observed at joint. Offset does not currently obstruct flow but should be monitored. Evaluation by licensed plumber recommended during any future plumbing work.",
-    },
-    {
-      label: "Moderate",
-      text: "Moderate pipe offset observed. Misalignment is causing debris accumulation and may restrict flow over time. Likely caused by soil settlement or root pressure. Evaluation by licensed plumber recommended.",
-    },
-    {
-      label: "Major",
-      text: "Significant pipe offset observed. Severe misalignment is restricting flow and causing debris accumulation. Repair or CIPP spot-lining required. Licensed plumber or sewer contractor must be consulted prior to close of escrow.",
-    },
-  ],
-  "Circumferential Crack": [
-    {
-      label: "Minor",
-      text: "Minor circumferential crack observed. Crack does not extend through full pipe wall at this time. Monitor and re-inspect within 12 months. Licensed plumber evaluation recommended.",
-    },
-    {
-      label: "Major",
-      text: "Circumferential crack observed extending around pipe. Crack allows groundwater infiltration and root intrusion. Structural integrity compromised. Spot repair or pipe replacement required prior to close of escrow.",
-    },
-  ],
-  "Longitudinal Crack": [
-    {
-      label: "Minor",
-      text: "Minor longitudinal crack observed running along pipe length. No significant infiltration noted at this time. Licensed plumber evaluation recommended.",
-    },
-    {
-      label: "Major",
-      text: "Significant longitudinal crack observed. Crack extends along pipe allowing infiltration and potential pipe collapse. Immediate evaluation and repair by licensed plumber required.",
-    },
-  ],
-  "Erosion At Joint": [
-    {
-      label: "Moderate",
-      text: "Erosion observed at pipe joint. Material worn away at connection point, compromising joint integrity. Water infiltration possible. Licensed plumber evaluation recommended prior to close of escrow.",
-    },
-    {
-      label: "Major",
-      text: "Significant erosion observed at joint. Joint integrity is severely compromised with visible material loss. Immediate repair required. Consult licensed plumber prior to close of escrow.",
-    },
-  ],
-  "Debris Within Pipe": [
-    {
-      label: "Minor",
-      text: "Minor debris accumulation observed. Debris occludes less than 25% of pipe diameter. No immediate obstruction. Routine hydro-jetting recommended as preventive maintenance.",
-    },
-    {
-      label: "Moderate",
-      text: "Moderate debris/buildup observed at various points throughout pipe. Debris occludes 25-50% of pipe diameter. Hydro-jetting recommended prior to close of escrow to restore full flow capacity.",
-    },
-    {
-      label: "Major",
-      text: "Severe debris accumulation observed. Debris occludes more than 50% of pipe diameter posing immediate blockage risk. Immediate hydro-jetting by licensed plumbing contractor required.",
-    },
-  ],
-  "Deteriorated Pipe Material": [
-    {
-      label: "Moderate",
-      text: "Deterioration of pipe material observed. Pitting and corrosion noted on interior pipe walls reducing structural integrity. Licensed plumber evaluation and long-term replacement planning recommended.",
-    },
-    {
-      label: "Major",
-      text: "Significant pipe deterioration observed. Severe pitting, corrosion, and material breakdown noted. Pipe replacement required. Licensed plumber must be consulted prior to close of escrow.",
-    },
-  ],
-  "Grease Deposit": [
-    {
-      label: "Minor",
-      text: "Minor grease accumulation observed. No immediate obstruction. Recommend routine hydro-jetting and advise client to avoid pouring grease or oils down drains.",
-    },
-    {
-      label: "Moderate",
-      text: "Moderate grease buildup observed restricting flow capacity. Hydro-jetting recommended prior to close of escrow. Client advised to avoid disposing grease or food waste in drains.",
-    },
-    {
-      label: "Major",
-      text: "Significant grease accumulation observed causing substantial flow restriction. Immediate hydro-jetting by licensed plumber required. Risk of complete blockage if untreated.",
-    },
-  ],
-  "Broken Pipe": [
-    {
-      label: "Major",
-      text: "Broken pipe observed with fractured and/or displaced sections. Pipe integrity is compromised. Immediate excavation and replacement required. Licensed plumber must be consulted prior to close of escrow.",
-    },
-  ],
-  "Belly/Positive Grade": [
-    {
-      label: "Moderate",
-      text: "Pipe sag/belly observed. Low point in pipe allows solids and debris to accumulate causing recurring blockages and slow drainage. Evaluation by licensed plumber recommended. Repair may require excavation.",
-    },
-    {
-      label: "Major",
-      text: "Significant pipe belly observed causing standing water and solid accumulation. Recurring blockages likely without correction. Excavation and pipe re-grading required. Consult licensed plumber prior to close of escrow.",
-    },
-  ],
-  "Scale Buildup": [
-    {
-      label: "Minor",
-      text: "Minor scale deposits observed on interior pipe walls. Deposits occupy less than 25% of pipe diameter. Routine descaling recommended as preventive maintenance.",
-    },
-    {
-      label: "Moderate",
-      text: "Moderate scaling observed throughout pipe section. Scale deposits occupy 25-50% of pipe diameter and may impact flow. Descaling by professional licensed plumber strongly recommended prior to close of escrow.",
-    },
-    {
-      label: "Major",
-      text: "Severe scaling observed. Deposits occupy more than 50% of pipe diameter significantly restricting flow. Immediate descaling or pipe replacement required. Licensed plumber must be consulted.",
-    },
-  ],
-  Infiltration: [
-    {
-      label: "Moderate",
-      text: "Groundwater infiltration observed entering pipe through crack or joint. Infiltration increases flow volume and may carry soil into pipe. Repair of entry point recommended by licensed plumber.",
-    },
-    {
-      label: "Major",
-      text: "Significant groundwater infiltration observed. Large volume of water entering pipe compromising system capacity and potentially causing soil voids. Immediate repair required prior to close of escrow.",
-    },
-  ],
-  Exfiltration: [
-    {
-      label: "Major",
-      text: "Sewage exfiltration observed — wastewater leaking from pipe into surrounding soil. This is a public health concern and environmental violation. Immediate repair required. Licensed plumber must be consulted prior to close of escrow.",
-    },
-  ],
-  Collapse: [
-    {
-      label: "Major",
-      text: "Pipe collapse observed. Section of pipe has caved in preventing full inspection beyond this point. This constitutes complete failure of the sewer system. Immediate excavation and replacement required. Licensed plumber must be consulted prior to close of escrow.",
-    },
-  ],
-  "Joints Performing As Designed - No Defect": [
-    {
-      label: "No Defect",
-      text: "Joints observed performing as designed. No infiltration, offset, or deterioration noted at connections. Pipe appears structurally sound at time of inspection.",
-    },
-  ],
-  "Camera Reached Inspection Limit": [
-    {
-      label: "Info",
-      text: "Camera reached maximum inspection distance or obstruction preventing further advancement. Inspection limited to accessible portion of line. Condition of remaining pipe unknown. Additional access point or excavation may be required for full assessment.",
-    },
-  ],
-  "City Connection Reached": [
-    {
-      label: "Info",
-      text: "Camera reached city sewer main connection. Full lateral inspection completed to public sewer system tie-in point. No issues noted at connection.",
-    },
-  ],
-  "Pipe Traversed Material": [
-    {
-      label: "Info",
-      text: "Camera traversed change in pipe material noted during inspection. Transition joint appears intact with no visible defects at time of inspection.",
-    },
-  ],
-  Other: [
-    {
-      label: "Custom",
-      text: "Observation noted during inspection. Please add specific details in the narrative field below.",
-    },
-  ],
-};
-
-const inp = {
-  height: "36px",
-  borderRadius: "6px",
-  border: "1px solid #E2E8F0",
-  padding: "0 10px",
-  fontSize: "13px",
-  color: "#0F172A",
-  outline: "none",
-  boxSizing: "border-box" as const,
-  background: "#F8FAFC",
-};
-const lbl = {
-  display: "block",
-  fontSize: "11px",
-  fontWeight: 600 as const,
-  color: "#64748B",
-  marginBottom: "4px",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.05em",
-};
-const card = {
-  background: "#fff",
-  border: "1px solid #E2E8F0",
-  borderRadius: "12px",
-  padding: "20px",
-  marginBottom: "16px",
-};
-
 export default function ReportBuilder() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const editId = searchParams.get("edit");
-
-  const [uid, setUid] = useState<string | null>(null);
   const [title, setTitle] = useState("New Inspection Report");
   const [editingTitle, setEditingTitle] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [savedMsg, setSavedMsg] = useState("");
   const [activeTab, setActiveTab] = useState<
     "details" | "system" | "conditions" | "recommendations"
   >("details");
-  const [dragOver, setDragOver] = useState<string | null>(null);
 
   const [details, setDetails] = useState({
     fileNumber: "",
@@ -406,115 +237,124 @@ export default function ReportBuilder() {
   const [corrections, setCorrections] = useState<Record<string, string>>(
     Object.fromEntries(correctiveActions.map((a) => [a.label, "N/A"])),
   );
+  const [endOfReport, setEndOfReport] = useState<Record<string, string>>({});
   const [correctionNotes, setCorrectionNotes] = useState("");
   const [propertyPhotos, setPropertyPhotos] = useState<string[]>([]);
   const [defects, setDefects] = useState<Defect[]>([]);
+  const [dragOver, setDragOver] = useState<string | null>(null);
 
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      if (u) setUid(u.uid);
-      else router.replace("/login");
-    });
-    return () => unsub();
-  }, []);
+  const updateDetail = (k: string, v: string) =>
+    setDetails((p) => ({ ...p, [k]: v }));
 
-  useEffect(() => {
-    if (!editId || !uid) return;
-    const loadEdit = async () => {
-      try {
-        const res = await fetch(`/api/reports/${editId}`, {
-          headers: { "x-user-id": uid },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.title) setTitle(data.title);
-          if (data.report) setDetails((p) => ({ ...p, ...data.report }));
-          if (data.defects) setDefects(data.defects);
-          if (data.report?.corrections) setCorrections(data.report.corrections);
-          if (data.report?.correctionNotes)
-            setCorrectionNotes(data.report.correctionNotes);
-          if (data.report?.propertyPhotos)
-            setPropertyPhotos(data.report.propertyPhotos);
-          return;
-        }
-      } catch {}
-      const local = localStorage.getItem(`report_edit_${editId}`);
-      if (local) {
-        const data = JSON.parse(local);
-        if (data.title) setTitle(data.title);
-        if (data.report) setDetails((p) => ({ ...p, ...data.report }));
-        if (data.defects) setDefects(data.defects);
-      }
-    };
-    loadEdit();
-  }, [editId, uid]);
-
-  const buildPayload = () => {
-    const id = editId || Date.now().toString();
-    const report = {
-      ...details,
-      id,
-      title,
-      status: "DRAFT",
-      propertyPhotos,
-      corrections,
-      correctionNotes,
-      inspectionTime: `${details.inspectionTimeH || "--"}:${details.inspectionTimeM || "--"} ${details.inspectionTimeAmPm}`,
-      weather: [
-        details.weatherCondition,
-        details.weatherTemp,
-        details.weatherSoil,
-      ]
-        .filter(Boolean)
-        .join(", "),
-      videoLinks: details.videoLinks.filter((l) => l.trim() !== ""),
-    };
-    return { report, defects };
+  const togglePerson = (person: string) => {
+    setDetails((p) => ({
+      ...p,
+      peoplePresent: p.peoplePresent.includes(person)
+        ? p.peoplePresent.filter((x) => x !== person)
+        : [...p.peoplePresent, person],
+    }));
   };
 
-  const handleSaveDraft = async () => {
-    if (!uid) return;
-    setSaving(true);
-    try {
-      const payload = buildPayload();
-      const res = await fetch("/api/reports", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-user-id": uid },
-        body: JSON.stringify(payload),
-      });
-      if (res.ok) {
-        const saved = await res.json();
-        localStorage.setItem(`report_${saved.id}`, JSON.stringify(payload));
-        const existing = JSON.parse(
-          localStorage.getItem("sewer_reports") || "[]",
+  const toggleMaterial = (material: string) => {
+    setDetails((p) => ({
+      ...p,
+      pipeMaterials: p.pipeMaterials.includes(material)
+        ? p.pipeMaterials.filter((m) => m !== material)
+        : [...p.pipeMaterials, material],
+    }));
+  };
+
+  const updateVideoLink = (index: number, value: string) => {
+    const links = [...details.videoLinks];
+    links[index] = value;
+    setDetails((p) => ({ ...p, videoLinks: links }));
+  };
+
+  const addDefect = () => {
+    setDefects((p) => [
+      ...p,
+      {
+        id: Date.now().toString(),
+        videoTimeH: "",
+        videoTimeM: "",
+        footageStart: "",
+        conditionType: "Select Condition Type",
+        severity: "Minor",
+        narrative: "",
+        images: [],
+        expanded: true,
+      },
+    ]);
+    setActiveTab("conditions");
+  };
+
+  const updateDefect = (id: string, k: string, v: string) =>
+    setDefects((p) => p.map((d) => (d.id === id ? { ...d, [k]: v } : d)));
+
+  const toggleExpand = (id: string) =>
+    setDefects((p) =>
+      p.map((d) => (d.id === id ? { ...d, expanded: !d.expanded } : d)),
+    );
+
+  const deleteDefect = (id: string) =>
+    setDefects((p) => p.filter((d) => d.id !== id));
+
+  const handleImageUpload = (defectId: string, files: FileList | null) => {
+    if (!files) return;
+    const defect = defects.find((d) => d.id === defectId);
+    if (!defect) return;
+    const remaining = 6 - defect.images.length;
+    const toAdd = Array.from(files).slice(0, remaining);
+    toAdd.forEach((f) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const url = e.target?.result as string;
+        setDefects((p) =>
+          p.map((d) =>
+            d.id === defectId
+              ? {
+                  ...d,
+                  images: [
+                    ...d.images,
+                    {
+                      id: Date.now().toString() + Math.random(),
+                      url,
+                      name: f.name,
+                    },
+                  ],
+                }
+              : d,
+          ),
         );
-        const updated = [
-          payload.report,
-          ...existing.filter((r: any) => r.id !== saved.id),
-        ];
-        localStorage.setItem("sewer_reports", JSON.stringify(updated));
-        setSavedMsg("✓ Saved");
-        setTimeout(() => setSavedMsg(""), 2500);
-      }
-    } catch {
-      setSavedMsg("Save failed");
-      setTimeout(() => setSavedMsg(""), 2500);
-    } finally {
-      setSaving(false);
-    }
+      };
+      reader.readAsDataURL(f);
+    });
+  };
+
+  const removeImage = (defectId: string, imageId: string) =>
+    setDefects((p) =>
+      p.map((d) =>
+        d.id === defectId
+          ? { ...d, images: d.images.filter((i) => i.id !== imageId) }
+          : d,
+      ),
+    );
+
+  const handlePropertyPhotos = (files: FileList | null) => {
+    if (!files) return;
+    const remaining = 3 - propertyPhotos.length;
+    const toAdd = Array.from(files).slice(0, remaining);
+    toAdd.forEach((f) => {
+      const reader = new FileReader();
+      reader.onload = (e) =>
+        setPropertyPhotos((p) => [...p, e.target?.result as string]);
+      reader.readAsDataURL(f);
+    });
   };
 
   const handleGeneratePDF = async () => {
     setGenerating(true);
     try {
-      const payload = buildPayload();
-      if (uid) {
-        await fetch("/api/reports", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "x-user-id": uid },
-          body: JSON.stringify(payload),
-        });
-      }
       const res = await fetch("/api/reports/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -525,6 +365,7 @@ export default function ReportBuilder() {
             propertyPhotos,
             corrections,
             correctionNotes,
+            endOfReport,
             inspectionTime: `${details.inspectionTimeH || "--"}:${details.inspectionTimeM || "--"} ${details.inspectionTimeAmPm}`,
             weather: [
               details.weatherCondition,
@@ -553,173 +394,46 @@ export default function ReportBuilder() {
     }
   };
 
-  const updateDetail = (k: string, v: string) =>
-    setDetails((p) => ({ ...p, [k]: v }));
-  const togglePerson = (p: string) =>
-    setDetails((d) => ({
-      ...d,
-      peoplePresent: d.peoplePresent.includes(p)
-        ? d.peoplePresent.filter((x) => x !== p)
-        : [...d.peoplePresent, p],
-    }));
-  const toggleMaterial = (m: string) =>
-    setDetails((d) => ({
-      ...d,
-      pipeMaterials: d.pipeMaterials.includes(m)
-        ? d.pipeMaterials.filter((x) => x !== m)
-        : [...d.pipeMaterials, m],
-    }));
-  const updateVideoLink = (i: number, v: string) => {
-    const links = [...details.videoLinks];
-    links[i] = v;
-    setDetails((p) => ({ ...p, videoLinks: links }));
+  const inp: React.CSSProperties = {
+    height: "38px",
+    borderRadius: "6px",
+    border: "1px solid #E2E8F0",
+    padding: "0 10px",
+    fontSize: "13px",
+    color: "#0F172A",
+    outline: "none",
+    boxSizing: "border-box",
+    background: "#F8FAFC",
   };
 
-  const addDefect = () => {
-    setDefects((p) => [
-      ...p,
-      {
-        id: Date.now().toString(),
-        videoTimeH: "",
-        videoTimeM: "",
-        footageStart: "",
-        conditionType: "Select Condition Type",
-        severity: "Minor",
-        narrative: "",
-        images: [],
-        expanded: true,
-      },
-    ]);
-    setActiveTab("conditions");
-  };
-  const updateDefect = (id: string, k: string, v: string) =>
-    setDefects((p) => p.map((d) => (d.id === id ? { ...d, [k]: v } : d)));
-  const toggleExpand = (id: string) =>
-    setDefects((p) =>
-      p.map((d) => (d.id === id ? { ...d, expanded: !d.expanded } : d)),
-    );
-  const deleteDefect = (id: string) =>
-    setDefects((p) => p.filter((d) => d.id !== id));
-
-  const handleImageUpload = (defectId: string, files: FileList | null) => {
-    if (!files) return;
-    const defect = defects.find((d) => d.id === defectId);
-    if (!defect) return;
-    const remaining = 6 - defect.images.length;
-    Array.from(files)
-      .slice(0, remaining)
-      .forEach((f) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const url = e.target?.result as string;
-          setDefects((p) =>
-            p.map((d) =>
-              d.id === defectId
-                ? {
-                    ...d,
-                    images: [
-                      ...d.images,
-                      {
-                        id: Date.now().toString() + Math.random(),
-                        url,
-                        name: f.name,
-                      },
-                    ],
-                  }
-                : d,
-            ),
-          );
-        };
-        reader.readAsDataURL(f);
-      });
+  const lbl: React.CSSProperties = {
+    display: "block",
+    fontSize: "11px",
+    fontWeight: 600,
+    color: "#64748B",
+    marginBottom: "4px",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
   };
 
-  const removeImage = (defectId: string, imageId: string) =>
-    setDefects((p) =>
-      p.map((d) =>
-        d.id === defectId
-          ? { ...d, images: d.images.filter((i) => i.id !== imageId) }
-          : d,
-      ),
-    );
-
-  const handlePropertyPhotos = (files: FileList | null) => {
-    if (!files) return;
-    const remaining = 3 - propertyPhotos.length;
-    Array.from(files)
-      .slice(0, remaining)
-      .forEach((f) => {
-        const reader = new FileReader();
-        reader.onload = (e) =>
-          setPropertyPhotos((p) => [...p, e.target?.result as string]);
-        reader.readAsDataURL(f);
-      });
-  };
-
-  const tabStyle = (active: boolean) => ({
+  const tab = (active: boolean): React.CSSProperties => ({
     padding: "8px 14px",
     borderRadius: "6px",
     fontSize: "13px",
-    fontWeight: 600 as const,
-    cursor: "pointer" as const,
+    fontWeight: 600,
+    cursor: "pointer",
     background: active ? "#0F2A4A" : "transparent",
     color: active ? "#fff" : "#64748B",
     border: "none",
   });
 
-  // ── TIME BOX with auto-tab ──
-  const TimeBox = ({
-    hKey,
-    mKey,
-    apKey,
-  }: {
-    hKey: string;
-    mKey: string;
-    apKey: string;
-  }) => (
-    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-      <input
-        id={`tbh-${hKey}`}
-        maxLength={2}
-        value={(details as any)[hKey]}
-        onChange={(e) => updateDetail(hKey, e.target.value.replace(/\D/g, ""))}
-        onKeyUp={(e) => {
-          if ((e.target as HTMLInputElement).value.length === 2)
-            document.getElementById(`tbm-${mKey}`)?.focus();
-        }}
-        placeholder="HH"
-        style={{ ...inp, width: "48px", textAlign: "center" }}
-      />
-      <span style={{ fontWeight: 700, color: "#64748B" }}>:</span>
-      <input
-        id={`tbm-${mKey}`}
-        maxLength={2}
-        value={(details as any)[mKey]}
-        onChange={(e) => updateDetail(mKey, e.target.value.replace(/\D/g, ""))}
-        placeholder="MM"
-        style={{ ...inp, width: "48px", textAlign: "center" }}
-      />
-      {["AM", "PM"].map((x) => (
-        <button
-          key={x}
-          type="button"
-          onClick={() => updateDetail(apKey, x)}
-          style={{
-            padding: "4px 10px",
-            borderRadius: "20px",
-            fontSize: "12px",
-            fontWeight: 600,
-            cursor: "pointer",
-            border: "none",
-            background: (details as any)[apKey] === x ? "#0F2A4A" : "#F1F5F9",
-            color: (details as any)[apKey] === x ? "#fff" : "#64748B",
-          }}
-        >
-          {x}
-        </button>
-      ))}
-    </div>
-  );
+  const card: React.CSSProperties = {
+    background: "#fff",
+    border: "1px solid #E2E8F0",
+    borderRadius: "12px",
+    padding: "20px",
+    marginBottom: "16px",
+  };
 
   return (
     <div
@@ -729,7 +443,7 @@ export default function ReportBuilder() {
         minHeight: "100vh",
       }}
     >
-      {/* ── TOP BAR ── */}
+      {/* Top bar */}
       <div
         style={{
           background: "#fff",
@@ -745,14 +459,14 @@ export default function ReportBuilder() {
       >
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           <a
-            href="/reports"
+            href="/"
             style={{
               color: "#64748B",
               textDecoration: "none",
               fontSize: "14px",
             }}
           >
-            ← Reports
+            ← Dashboard
           </a>
           <span style={{ color: "#E2E8F0" }}>|</span>
           {editingTitle ? (
@@ -794,50 +508,25 @@ export default function ReportBuilder() {
             DRAFT
           </span>
         </div>
-        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-          {savedMsg && (
-            <span
-              style={{ fontSize: "13px", color: "#16A34A", fontWeight: 600 }}
-            >
-              {savedMsg}
-            </span>
-          )}
-          <button
-            onClick={handleSaveDraft}
-            disabled={saving}
-            style={{
-              background: saving ? "#94A3B8" : "#0F2A4A",
-              color: "#fff",
-              border: "none",
-              borderRadius: "8px",
-              padding: "8px 18px",
-              fontSize: "13px",
-              fontWeight: 600,
-              cursor: saving ? "not-allowed" : "pointer",
-            }}
-          >
-            {saving ? "Saving..." : "💾 Save Draft"}
-          </button>
-          <button
-            onClick={handleGeneratePDF}
-            disabled={generating}
-            style={{
-              background: generating ? "#94A3B8" : "#2D8C4E",
-              color: "#fff",
-              border: "none",
-              borderRadius: "8px",
-              padding: "8px 18px",
-              fontSize: "13px",
-              fontWeight: 600,
-              cursor: generating ? "not-allowed" : "pointer",
-            }}
-          >
-            {generating ? "Generating..." : "Generate PDF"}
-          </button>
-        </div>
+        <button
+          onClick={handleGeneratePDF}
+          disabled={generating}
+          style={{
+            background: generating ? "#94A3B8" : "#2D8C4E",
+            color: "#fff",
+            border: "none",
+            borderRadius: "8px",
+            padding: "8px 18px",
+            fontSize: "13px",
+            fontWeight: 600,
+            cursor: generating ? "not-allowed" : "pointer",
+          }}
+        >
+          {generating ? "Generating..." : "📄 Generate PDF"}
+        </button>
       </div>
 
-      {/* ── TABS ── */}
+      {/* Tabs */}
       <div
         style={{
           background: "#fff",
@@ -849,25 +538,25 @@ export default function ReportBuilder() {
         }}
       >
         <button
-          style={tabStyle(activeTab === "details")}
+          style={tab(activeTab === "details")}
           onClick={() => setActiveTab("details")}
         >
           📋 Client & Site Info
         </button>
         <button
-          style={tabStyle(activeTab === "system")}
+          style={tab(activeTab === "system")}
           onClick={() => setActiveTab("system")}
         >
           🔧 Sewer System Info
         </button>
         <button
-          style={tabStyle(activeTab === "conditions")}
+          style={tab(activeTab === "conditions")}
           onClick={() => setActiveTab("conditions")}
         >
           🔍 Pipe Conditions {defects.length > 0 && `(${defects.length})`}
         </button>
         <button
-          style={tabStyle(activeTab === "recommendations")}
+          style={tab(activeTab === "recommendations")}
           onClick={() => setActiveTab("recommendations")}
         >
           📝 End of Report
@@ -875,7 +564,7 @@ export default function ReportBuilder() {
       </div>
 
       <div style={{ padding: "24px", maxWidth: "1000px", margin: "0 auto" }}>
-        {/* ── TAB 1: Client & Site Info ── */}
+        {/* TAB 1 — Client & Site Info */}
         {activeTab === "details" && (
           <div
             style={{
@@ -896,6 +585,7 @@ export default function ReportBuilder() {
                 >
                   File & Client Information
                 </h3>
+
                 {[
                   {
                     label: "File Number",
@@ -955,12 +645,77 @@ export default function ReportBuilder() {
                     />
                   </div>
                   <div>
-                    <label style={lbl}>Inspection Time</label>
-                    <TimeBox
-                      hKey="inspectionTimeH"
-                      mKey="inspectionTimeM"
-                      apKey="inspectionTimeAmPm"
-                    />
+                    <label style={lbl}>Time</label>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px",
+                      }}
+                    >
+                      <input
+                        maxLength={2}
+                        value={details.inspectionTimeH}
+                        onChange={(e) =>
+                          updateDetail(
+                            "inspectionTimeH",
+                            e.target.value.replace(/\D/g, "").slice(0, 2),
+                          )
+                        }
+                        placeholder="HH"
+                        style={{
+                          ...inp,
+                          width: "42px",
+                          textAlign: "center",
+                          padding: "0 4px",
+                        }}
+                      />
+                      <span style={{ fontWeight: 700, color: "#64748B" }}>
+                        :
+                      </span>
+                      <input
+                        maxLength={2}
+                        value={details.inspectionTimeM}
+                        onChange={(e) =>
+                          updateDetail(
+                            "inspectionTimeM",
+                            e.target.value.replace(/\D/g, "").slice(0, 2),
+                          )
+                        }
+                        placeholder="MM"
+                        style={{
+                          ...inp,
+                          width: "42px",
+                          textAlign: "center",
+                          padding: "0 4px",
+                        }}
+                      />
+                      {["AM", "PM"].map((x) => (
+                        <button
+                          key={x}
+                          type="button"
+                          onClick={() => updateDetail("inspectionTimeAmPm", x)}
+                          style={{
+                            padding: "4px 8px",
+                            borderRadius: "20px",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            border: "none",
+                            background:
+                              details.inspectionTimeAmPm === x
+                                ? "#0F2A4A"
+                                : "#F1F5F9",
+                            color:
+                              details.inspectionTimeAmPm === x
+                                ? "#fff"
+                                : "#64748B",
+                          }}
+                        >
+                          {x}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
@@ -982,7 +737,12 @@ export default function ReportBuilder() {
                 <div style={{ marginBottom: "12px" }}>
                   <label style={lbl}>People Present</label>
                   <div
-                    style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: "6px",
+                      marginBottom: "6px",
+                    }}
                   >
                     {peopleOptions.map((p) => (
                       <button
@@ -1009,6 +769,17 @@ export default function ReportBuilder() {
                       </button>
                     ))}
                   </div>
+                  {details.peoplePresent.length > 0 && (
+                    <div
+                      style={{
+                        fontSize: "12px",
+                        color: "#2D8C4E",
+                        fontWeight: 500,
+                      }}
+                    >
+                      ✓ {details.peoplePresent.join(", ")}
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -1056,18 +827,23 @@ export default function ReportBuilder() {
                       </select>
                     </div>
                   </div>
-                  <select
-                    value={details.weatherSoil}
-                    onChange={(e) =>
-                      updateDetail("weatherSoil", e.target.value)
-                    }
-                    style={{ ...inp, width: "100%" }}
-                  >
-                    <option value="">Soil condition...</option>
-                    {soilOptions.map((s) => (
-                      <option key={s}>{s}</option>
-                    ))}
-                  </select>
+                  <div>
+                    <label style={{ ...lbl, fontSize: "10px" }}>
+                      Soil Condition
+                    </label>
+                    <select
+                      value={details.weatherSoil}
+                      onChange={(e) =>
+                        updateDetail("weatherSoil", e.target.value)
+                      }
+                      style={{ ...inp, width: "100%" }}
+                    >
+                      <option value="">Select...</option>
+                      {soilOptions.map((s) => (
+                        <option key={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1091,20 +867,21 @@ export default function ReportBuilder() {
                     marginBottom: "12px",
                   }}
                 >
-                  Up to 3 photos — shown on cover page
+                  Up to 3 photos — shown on cover page of PDF
                 </p>
+
                 {propertyPhotos.length < 3 && (
                   <div
                     onClick={() => {
-                      const i = document.createElement("input");
-                      i.type = "file";
-                      i.accept = "image/*";
-                      i.multiple = true;
-                      i.onchange = (e) =>
+                      const input = document.createElement("input");
+                      input.type = "file";
+                      input.accept = "image/*";
+                      input.multiple = true;
+                      input.onchange = (e) =>
                         handlePropertyPhotos(
                           (e.target as HTMLInputElement).files,
                         );
-                      i.click();
+                      input.click();
                     }}
                     style={{
                       border: "2px dashed #E2E8F0",
@@ -1135,10 +912,11 @@ export default function ReportBuilder() {
                         marginTop: "4px",
                       }}
                     >
-                      {propertyPhotos.length}/3 photos added
+                      {propertyPhotos.length}/3 added
                     </div>
                   </div>
                 )}
+
                 {propertyPhotos.length > 0 && (
                   <div
                     style={{
@@ -1189,6 +967,20 @@ export default function ReportBuilder() {
                         >
                           ×
                         </button>
+                        <div
+                          style={{
+                            position: "absolute",
+                            bottom: "4px",
+                            left: "4px",
+                            background: "rgba(0,0,0,0.6)",
+                            color: "#fff",
+                            fontSize: "10px",
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                          }}
+                        >
+                          Photo {index + 1}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1201,7 +993,7 @@ export default function ReportBuilder() {
                     fontSize: "14px",
                     fontWeight: 700,
                     color: "#0F2A4A",
-                    margin: "0 0 16px",
+                    margin: "0 0 12px",
                   }}
                 >
                   General Notes
@@ -1209,7 +1001,7 @@ export default function ReportBuilder() {
                 <textarea
                   value={details.notes}
                   onChange={(e) => updateDetail("notes", e.target.value)}
-                  placeholder="Add general notes..."
+                  placeholder="Add general notes about the inspection..."
                   rows={5}
                   style={{
                     ...inp,
@@ -1225,7 +1017,7 @@ export default function ReportBuilder() {
           </div>
         )}
 
-        {/* ── TAB 2: Sewer System Info ── */}
+        {/* TAB 2 — Sewer System Info */}
         {activeTab === "system" && (
           <div
             style={{
@@ -1246,6 +1038,18 @@ export default function ReportBuilder() {
                 >
                   Sewer System Details
                 </h3>
+
+                <div style={{ marginBottom: "14px" }}>
+                  <label style={lbl}>Camera Entry / Cleanout Type</label>
+                  <input
+                    type="text"
+                    value={details.fileNumber}
+                    onChange={(e) => updateDetail("fileNumber", e.target.value)}
+                    placeholder='e.g. 4" Cast Iron'
+                    style={{ ...inp, width: "100%" }}
+                  />
+                </div>
+
                 <div style={{ marginBottom: "14px" }}>
                   <label style={lbl}>Cleanout Location</label>
                   <textarea
@@ -1265,85 +1069,154 @@ export default function ReportBuilder() {
                     }}
                   />
                 </div>
-                <div style={{ marginBottom: "14px" }}>
+
+                <div style={{ marginBottom: "4px" }}>
                   <label style={lbl}>Sewer Video Links (up to 4)</label>
                   {[0, 1, 2, 3].map((i) => (
-                    <div key={i} style={{ marginBottom: "8px" }}>
-                      <label
+                    <div
+                      key={i}
+                      style={{
+                        marginBottom: "8px",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                      }}
+                    >
+                      <span
                         style={{
-                          ...lbl,
-                          fontSize: "10px",
-                          marginBottom: "3px",
+                          fontSize: "11px",
+                          color: "#64748B",
+                          minWidth: "48px",
+                          fontWeight: 600,
                         }}
                       >
                         Link {i + 1}
-                      </label>
+                      </span>
                       <input
                         type="text"
                         value={details.videoLinks[i]}
                         onChange={(e) => updateVideoLink(i, e.target.value)}
                         placeholder="https://youtu.be/..."
-                        style={{ ...inp, width: "100%" }}
+                        style={{ ...inp, flex: 1 }}
                       />
                     </div>
                   ))}
                 </div>
               </div>
 
+              {/* Piping Section */}
               <div style={card}>
                 <h3
                   style={{
                     fontSize: "14px",
                     fontWeight: 700,
                     color: "#0F2A4A",
-                    margin: "0 0 14px",
+                    margin: "0 0 8px",
                   }}
                 >
                   Piping Section
                 </h3>
-                <div style={{ marginBottom: "12px" }}>
-                  <label style={lbl}>1st Camera Direction</label>
-                  <input
-                    type="text"
-                    value={details.cameraDirection1}
-                    onChange={(e) =>
-                      updateDetail("cameraDirection1", e.target.value)
-                    }
-                    placeholder="e.g. approx. time 0 - 18 min towards Clean-out to City Connection"
-                    style={{ ...inp, width: "100%" }}
-                  />
-                </div>
-                <div style={{ marginBottom: "12px" }}>
-                  <label style={lbl}>2nd Camera Direction</label>
-                  <input
-                    type="text"
-                    value={details.cameraDirection2}
-                    onChange={(e) =>
-                      updateDetail("cameraDirection2", e.target.value)
-                    }
-                    placeholder="e.g. approx. time 19 - 26 min towards building's drain system"
-                    style={{ ...inp, width: "100%" }}
-                  />
-                </div>
-                <div>
-                  <label style={lbl}>Additional Piping Notes</label>
-                  <textarea
-                    value={details.pipingNotes}
-                    onChange={(e) =>
-                      updateDetail("pipingNotes", e.target.value)
-                    }
-                    placeholder="Any additional notes about the piping..."
-                    rows={3}
+                <p
+                  style={{
+                    fontSize: "12px",
+                    color: "#64748B",
+                    marginBottom: "14px",
+                  }}
+                >
+                  Describe the camera direction(s) during the inspection
+                </p>
+
+                <div
+                  style={{
+                    background: "#F8FAFC",
+                    border: "1px solid #E2E8F0",
+                    borderRadius: "8px",
+                    padding: "14px",
+                    marginBottom: "12px",
+                  }}
+                >
+                  <div
                     style={{
-                      ...inp,
-                      width: "100%",
-                      height: "auto",
-                      padding: "10px 12px",
-                      resize: "vertical",
-                      lineHeight: "1.6",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      color: "#0F2A4A",
+                      marginBottom: "12px",
+                      textTransform: "uppercase",
                     }}
-                  />
+                  >
+                    PIPING — Camera Direction(s)
+                  </div>
+                  <div style={{ marginBottom: "10px" }}>
+                    <label style={lbl}>1st Direction</label>
+                    <input
+                      type="text"
+                      value={details.cameraDirection1}
+                      onChange={(e) =>
+                        updateDetail("cameraDirection1", e.target.value)
+                      }
+                      placeholder="e.g. approx. time 0 - 18 min towards Clean-out to City Connection"
+                      style={{ ...inp, width: "100%" }}
+                    />
+                  </div>
+                  <div style={{ marginBottom: "10px" }}>
+                    <label style={lbl}>2nd Direction (optional)</label>
+                    <input
+                      type="text"
+                      value={details.cameraDirection2}
+                      onChange={(e) =>
+                        updateDetail("cameraDirection2", e.target.value)
+                      }
+                      placeholder="e.g. approx. time 19 - 26 min towards building's drain system"
+                      style={{ ...inp, width: "100%" }}
+                    />
+                  </div>
+                  <div>
+                    <label style={lbl}>Additional Piping Notes</label>
+                    <textarea
+                      value={details.pipingNotes}
+                      onChange={(e) =>
+                        updateDetail("pipingNotes", e.target.value)
+                      }
+                      placeholder="Any additional notes about the piping..."
+                      rows={2}
+                      style={{
+                        ...inp,
+                        width: "100%",
+                        height: "auto",
+                        padding: "10px 12px",
+                        resize: "vertical",
+                        lineHeight: "1.6",
+                      }}
+                    />
+                  </div>
                 </div>
+
+                {(details.cameraDirection1 || details.cameraDirection2) && (
+                  <div
+                    style={{
+                      background: "#0F2A4A",
+                      borderRadius: "8px",
+                      padding: "12px 14px",
+                      fontSize: "12px",
+                      color: "#fff",
+                      lineHeight: "1.8",
+                    }}
+                  >
+                    <strong>PDF Preview:</strong>
+                    <br />
+                    The camera went in the following direction(s):
+                    <br />
+                    {details.cameraDirection1 && (
+                      <>
+                        1st Direction: {details.cameraDirection1}
+                        <br />
+                      </>
+                    )}
+                    {details.cameraDirection2 && (
+                      <>2nd Direction: {details.cameraDirection2}</>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1402,7 +1275,7 @@ export default function ReportBuilder() {
           </div>
         )}
 
-        {/* ── TAB 3: Pipe Conditions ── */}
+        {/* TAB 3 — Pipe Conditions */}
         {activeTab === "conditions" && (
           <div>
             <div
@@ -1424,6 +1297,7 @@ export default function ReportBuilder() {
                 Pipe Conditions {defects.length > 0 && `(${defects.length})`}
               </h2>
               <button
+                type="button"
                 onClick={addDefect}
                 style={{
                   background: "#2D8C4E",
@@ -1471,6 +1345,7 @@ export default function ReportBuilder() {
                   Add conditions observed during the inspection
                 </div>
                 <button
+                  type="button"
                   onClick={addDefect}
                   style={{
                     background: "#2D8C4E",
@@ -1493,13 +1368,12 @@ export default function ReportBuilder() {
                 key={defect.id}
                 style={{
                   background: "#fff",
-                  border: `1px solid ${severityConfig[defect.severity]?.color || "#E2E8F0"}`,
+                  border: "1px solid #E2E8F0",
                   borderRadius: "12px",
                   marginBottom: "16px",
                   overflow: "hidden",
                 }}
               >
-                {/* Header row */}
                 <div
                   style={{
                     display: "flex",
@@ -1509,8 +1383,7 @@ export default function ReportBuilder() {
                     borderBottom: defect.expanded
                       ? "1px solid #F1F5F9"
                       : "none",
-                    background:
-                      severityConfig[defect.severity]?.bg || "#FAFAFA",
+                    background: "#FAFAFA",
                     flexWrap: "wrap",
                   }}
                 >
@@ -1525,7 +1398,6 @@ export default function ReportBuilder() {
                     #{index + 1}
                   </span>
 
-                  {/* Time box with auto-tab */}
                   <div
                     style={{
                       display: "flex",
@@ -1543,51 +1415,44 @@ export default function ReportBuilder() {
                       @
                     </span>
                     <input
-                      id={`dh-${defect.id}`}
                       maxLength={2}
                       value={defect.videoTimeH}
                       onChange={(e) =>
                         updateDefect(
                           defect.id,
                           "videoTimeH",
-                          e.target.value.replace(/\D/g, ""),
+                          e.target.value.replace(/\D/g, "").slice(0, 2),
                         )
                       }
-                      onKeyUp={(e) => {
-                        if ((e.target as HTMLInputElement).value.length === 2)
-                          document.getElementById(`dm-${defect.id}`)?.focus();
-                      }}
                       placeholder="MM"
                       style={{
                         ...inp,
-                        width: "38px",
+                        width: "36px",
                         textAlign: "center",
                         padding: "0 4px",
                       }}
                     />
                     <span style={{ fontWeight: 700, color: "#64748B" }}>:</span>
                     <input
-                      id={`dm-${defect.id}`}
                       maxLength={2}
                       value={defect.videoTimeM}
                       onChange={(e) =>
                         updateDefect(
                           defect.id,
                           "videoTimeM",
-                          e.target.value.replace(/\D/g, ""),
+                          e.target.value.replace(/\D/g, "").slice(0, 2),
                         )
                       }
                       placeholder="SS"
                       style={{
                         ...inp,
-                        width: "38px",
+                        width: "36px",
                         textAlign: "center",
                         padding: "0 4px",
                       }}
                     />
                   </div>
 
-                  {/* Footage */}
                   <div
                     style={{
                       display: "flex",
@@ -1616,7 +1481,9 @@ export default function ReportBuilder() {
                     style={{ ...inp, flex: 1, minWidth: "180px" }}
                   >
                     {conditionTypes.map((ct) => (
-                      <option key={ct}>{ct}</option>
+                      <option key={ct} value={ct}>
+                        {ct}
+                      </option>
                     ))}
                   </select>
 
@@ -1627,7 +1494,7 @@ export default function ReportBuilder() {
                     }
                     style={{
                       ...inp,
-                      width: "180px",
+                      width: "170px",
                       flex: "none",
                       background:
                         severityConfig[defect.severity]?.bg || "#F1F5F9",
@@ -1637,7 +1504,9 @@ export default function ReportBuilder() {
                     }}
                   >
                     {Object.keys(severityConfig).map((s) => (
-                      <option key={s}>{s}</option>
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
                     ))}
                   </select>
 
@@ -1673,83 +1542,12 @@ export default function ReportBuilder() {
                   <div style={{ padding: "16px" }}>
                     <div style={{ marginBottom: "14px" }}>
                       <label style={lbl}>Detailed Narrative</label>
-                      {narrativeLibrary[defect.conditionType] && (
-                        <div style={{ marginBottom: "10px" }}>
-                          <div
-                            style={{
-                              fontSize: "11px",
-                              fontWeight: 600,
-                              color: "#64748B",
-                              textTransform: "uppercase",
-                              letterSpacing: "0.05em",
-                              marginBottom: "6px",
-                            }}
-                          >
-                            ⚡ Quick Fill — click to use:
-                          </div>
-                          <div
-                            style={{
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: "6px",
-                            }}
-                          >
-                            {narrativeLibrary[defect.conditionType].map(
-                              (n, ni) => (
-                                <button
-                                  key={ni}
-                                  type="button"
-                                  onClick={() =>
-                                    updateDefect(defect.id, "narrative", n.text)
-                                  }
-                                  style={{
-                                    textAlign: "left",
-                                    padding: "8px 12px",
-                                    borderRadius: "6px",
-                                    border: `1px solid ${defect.narrative === n.text ? "#0F2A4A" : "#E2E8F0"}`,
-                                    background:
-                                      defect.narrative === n.text
-                                        ? "#EFF6FF"
-                                        : "#F8FAFC",
-                                    cursor: "pointer",
-                                    fontSize: "12px",
-                                    color: "#374151",
-                                    lineHeight: "1.5",
-                                  }}
-                                >
-                                  <span
-                                    style={{
-                                      fontWeight: 700,
-                                      color:
-                                        defect.narrative === n.text
-                                          ? "#0F2A4A"
-                                          : "#64748B",
-                                      fontSize: "11px",
-                                      textTransform: "uppercase",
-                                      display: "block",
-                                      marginBottom: "2px",
-                                    }}
-                                  >
-                                    {defect.narrative === n.text ? "✓ " : ""}
-                                    {n.label}
-                                  </span>
-                                  {n.text}
-                                </button>
-                              ),
-                            )}
-                          </div>
-                        </div>
-                      )}
                       <textarea
                         value={defect.narrative}
                         onChange={(e) =>
                           updateDefect(defect.id, "narrative", e.target.value)
                         }
-                        placeholder={
-                          narrativeLibrary[defect.conditionType]
-                            ? "Select a quick fill above or type your own..."
-                            : "Type narrative here..."
-                        }
+                        placeholder="e.g. Root intrusion; unable to determine where roots are originating. Cable or hydro jet to cut."
                         rows={3}
                         style={{
                           ...inp,
@@ -1760,25 +1558,6 @@ export default function ReportBuilder() {
                           lineHeight: "1.6",
                         }}
                       />
-                      {defect.narrative && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            updateDefect(defect.id, "narrative", "")
-                          }
-                          style={{
-                            marginTop: "4px",
-                            background: "none",
-                            border: "none",
-                            fontSize: "11px",
-                            color: "#94A3B8",
-                            cursor: "pointer",
-                            padding: 0,
-                          }}
-                        >
-                          ✕ Clear narrative
-                        </button>
-                      )}
                     </div>
 
                     <label style={lbl}>Photos ({defect.images.length}/6)</label>
@@ -1795,16 +1574,16 @@ export default function ReportBuilder() {
                       }}
                       onClick={() => {
                         if (defect.images.length >= 6) return;
-                        const i = document.createElement("input");
-                        i.type = "file";
-                        i.accept = "image/*";
-                        i.multiple = true;
-                        i.onchange = (e) =>
+                        const input = document.createElement("input");
+                        input.type = "file";
+                        input.accept = "image/*";
+                        input.multiple = true;
+                        input.onchange = (e) =>
                           handleImageUpload(
                             defect.id,
                             (e.target as HTMLInputElement).files,
                           );
-                        i.click();
+                        input.click();
                       }}
                       style={{
                         border: `2px dashed ${dragOver === defect.id ? "#2D8C4E" : "#E2E8F0"}`,
@@ -1824,7 +1603,7 @@ export default function ReportBuilder() {
                       <div style={{ fontSize: "12px", color: "#64748B" }}>
                         {defect.images.length >= 6
                           ? "Maximum 6 photos reached"
-                          : "Drag & drop or click to upload"}
+                          : "Drag & drop or click to upload inspection photos"}
                       </div>
                     </div>
 
@@ -1921,7 +1700,7 @@ export default function ReportBuilder() {
           </div>
         )}
 
-        {/* ── TAB 4: End of Report ── */}
+        {/* TAB 4 — End of Report */}
         {activeTab === "recommendations" && (
           <div>
             <div style={card}>
@@ -1944,8 +1723,9 @@ export default function ReportBuilder() {
               >
                 Select recommended corrective actions for each category
               </p>
+
               {correctiveActions.map((action) => (
-                <div key={action.label} style={{ marginBottom: "16px" }}>
+                <div key={action.label} style={{ marginBottom: "14px" }}>
                   <label style={lbl}>{action.label}</label>
                   <div
                     style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}
@@ -1981,13 +1761,14 @@ export default function ReportBuilder() {
                   </div>
                 </div>
               ))}
+
               <div style={{ marginTop: "16px" }}>
                 <label style={lbl}>Additional Recommendations / Notes</label>
                 <textarea
                   value={correctionNotes}
                   onChange={(e) => setCorrectionNotes(e.target.value)}
-                  placeholder="e.g. Hydro jet/blade cutting recommended..."
-                  rows={6}
+                  placeholder="e.g. Hydro jet recommended. Cast iron line needs to be replaced or lined..."
+                  rows={4}
                   style={{
                     ...inp,
                     width: "100%",
@@ -2006,33 +1787,60 @@ export default function ReportBuilder() {
                   fontSize: "14px",
                   fontWeight: 700,
                   color: "#0F2A4A",
-                  margin: "0 0 14px",
+                  margin: "0 0 4px",
                 }}
               >
                 End of Report Summary
               </h3>
-              <div
+              <p
                 style={{
-                  padding: "12px",
-                  background: "#F8FAFC",
-                  borderRadius: "8px",
-                  fontSize: "13px",
-                  lineHeight: "1.8",
-                  color: "#374151",
+                  fontSize: "12px",
+                  color: "#64748B",
+                  marginBottom: "16px",
                 }}
               >
-                <p style={{ marginBottom: "8px" }}>
-                  Given the condition(s) above we recommend full evaluations
-                  and/or corrections with written findings and costs to cure by
-                  a competent licensed plumbing contractor before the end/close
-                  of the inspection contingency period.
-                </p>
-                <p>
-                  Recommend sewer inspections after repairs are made to ensure
-                  efficacy of work and to inspect any areas of the sewer lateral
-                  not visible due to defect(s).
-                </p>
-              </div>
+                Select standard statements to include at the end of the report
+              </p>
+
+              {endOfReportOptions.map(({ label, key, options }) => (
+                <div key={key} style={{ marginBottom: "16px" }}>
+                  <label style={lbl}>{label}</label>
+                  <select
+                    value={endOfReport[key] || "Select..."}
+                    onChange={(e) =>
+                      setEndOfReport((p) => ({ ...p, [key]: e.target.value }))
+                    }
+                    style={{
+                      ...inp,
+                      width: "100%",
+                      height: "auto",
+                      padding: "10px 12px",
+                    }}
+                  >
+                    {options.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt.length > 80 ? opt.slice(0, 80) + "..." : opt}
+                      </option>
+                    ))}
+                  </select>
+                  {endOfReport[key] && endOfReport[key] !== "Select..." && (
+                    <div
+                      style={{
+                        marginTop: "6px",
+                        padding: "10px 12px",
+                        background: "#F0FDF4",
+                        borderRadius: "6px",
+                        fontSize: "12px",
+                        color: "#166534",
+                        lineHeight: "1.6",
+                        border: "1px solid #BBF7D0",
+                      }}
+                    >
+                      {endOfReport[key]}
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         )}
