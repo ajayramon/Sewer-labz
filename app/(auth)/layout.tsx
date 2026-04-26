@@ -15,6 +15,7 @@ export default function AuthLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+
   const [checked, setChecked] = useState(false);
   const [user, setUser] = useState<{
     email: string;
@@ -22,7 +23,17 @@ export default function AuthLayout({
   } | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [announcements, setAnnouncements] = useState<
+    {
+      id: string;
+      message: string;
+      type: "info" | "warning" | "success";
+      target: string;
+    }[]
+  >([]);
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
+  // Mobile detection
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
     check();
@@ -30,6 +41,7 @@ export default function AuthLayout({
     return () => window.removeEventListener("resize", check);
   }, []);
 
+  // Auth check
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (firebaseUser) => {
       const isPublic = PUBLIC_PATHS.some((p) => pathname?.endsWith(p));
@@ -37,15 +49,33 @@ export default function AuthLayout({
         router.replace("/login");
         return;
       }
-      if (firebaseUser)
+      if (firebaseUser) {
         setUser({
           email: firebaseUser.email || "",
           displayName: firebaseUser.displayName || "",
         });
+        // Fetch announcements after auth
+        firebaseUser.getIdToken().then((token) => {
+          fetch("/api/announcements", {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+            .then((r) => r.json())
+            .then((data) => setAnnouncements(data.announcements ?? []))
+            .catch(() => {});
+        });
+      }
       setChecked(true);
     });
     return () => unsub();
-  }, [pathname]);
+  }, [pathname, router]);
+
+  // Load dismissed IDs from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("dismissed_announcements");
+      if (stored) setDismissed(new Set(JSON.parse(stored)));
+    } catch {}
+  }, []);
 
   // Close menu on route change
   useEffect(() => {
@@ -57,7 +87,44 @@ export default function AuthLayout({
     router.replace("/login");
   };
 
-  if (!checked)
+  const dismissAnnouncement = (id: string) => {
+    const next = new Set([...dismissed, id]);
+    setDismissed(next);
+    try {
+      localStorage.setItem(
+        "dismissed_announcements",
+        JSON.stringify([...next]),
+      );
+    } catch {}
+  };
+
+  const visibleAnnouncements = announcements.filter(
+    (a) => !dismissed.has(a.id),
+  );
+
+  const TYPE_STYLES = {
+    info: {
+      bg: "rgba(96,165,250,0.1)",
+      border: "rgba(96,165,250,0.25)",
+      color: "#60a5fa",
+      icon: "ℹ",
+    },
+    warning: {
+      bg: "rgba(245,158,11,0.1)",
+      border: "rgba(245,158,11,0.25)",
+      color: "#f59e0b",
+      icon: "⚠",
+    },
+    success: {
+      bg: "rgba(45,140,78,0.12)",
+      border: "rgba(45,140,78,0.25)",
+      color: "#2D8C4E",
+      icon: "✓",
+    },
+  };
+
+  // Loading screen
+  if (!checked) {
     return (
       <div
         style={{
@@ -79,7 +146,9 @@ export default function AuthLayout({
         </div>
       </div>
     );
+  }
 
+  // Public pages — render children with no nav
   const isPublic = PUBLIC_PATHS.some((p) => pathname?.endsWith(p));
   if (isPublic) return <>{children}</>;
 
@@ -99,6 +168,7 @@ export default function AuthLayout({
         fontFamily: "Inter, Arial, sans-serif",
       }}
     >
+      {/* ── Nav ── */}
       <nav
         style={{
           background: "#0F2A4A",
@@ -193,13 +263,14 @@ export default function AuthLayout({
               padding: "4px 8px",
               lineHeight: 1,
             }}
+            aria-label="Toggle menu"
           >
             {menuOpen ? "✕" : "☰"}
           </button>
         )}
       </nav>
 
-      {/* Mobile dropdown menu */}
+      {/* ── Mobile dropdown ── */}
       {isMobile && menuOpen && (
         <div
           style={{
@@ -257,7 +328,6 @@ export default function AuthLayout({
               );
             })}
 
-            {/* Divider */}
             <div
               style={{
                 height: "1px",
@@ -266,7 +336,6 @@ export default function AuthLayout({
               }}
             />
 
-            {/* User info */}
             {user && (
               <div
                 style={{
@@ -301,6 +370,70 @@ export default function AuthLayout({
         </div>
       )}
 
+      {/* ── Announcement Banners ── */}
+      {visibleAnnouncements.length > 0 && (
+        <div>
+          {visibleAnnouncements.map((a) => {
+            const s = TYPE_STYLES[a.type] ?? TYPE_STYLES.info;
+            return (
+              <div
+                key={a.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "10px 20px",
+                  background: s.bg,
+                  borderBottom: `1px solid ${s.border}`,
+                  gap: "12px",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    flex: 1,
+                  }}
+                >
+                  <span
+                    style={{ color: s.color, fontSize: "15px", flexShrink: 0 }}
+                  >
+                    {s.icon}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "13px",
+                      color: "#1e293b",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {a.message}
+                  </span>
+                </div>
+                <button
+                  onClick={() => dismissAnnouncement(a.id)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#94A3B8",
+                    cursor: "pointer",
+                    fontSize: "18px",
+                    lineHeight: 1,
+                    padding: "0 4px",
+                    flexShrink: 0,
+                  }}
+                  aria-label="Dismiss announcement"
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Page content ── */}
       <main>{children}</main>
     </div>
   );
