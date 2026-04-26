@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { auth } from "@/lib/firebase";
+import { auth } from "@/app/Lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import Link from "next/link";
 

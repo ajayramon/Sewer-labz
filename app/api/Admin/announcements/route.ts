@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { adminAuth, adminDb } from "@/lib/firebase-admin";
+import { adminAuth, adminDb } from "@/app/Lib/firebase-admin";
 
 const ADMIN_EMAILS = ["your-email@gmail.com", "client-email@gmail.com"];
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { auth } from "@/lib/firebase";
+import { auth } from "@/app/Lib/firebase";
 
 interface UserRecord {
   uid: string;
