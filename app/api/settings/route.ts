@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuth, adminDb } from "@/app/Lib/firebase-admin";
 
-// Fields allowed to be saved — prevents overwriting plan/subscriptionId etc.
 const ALLOWED_FIELDS = [
   "fullName",
   "companyName",
@@ -12,7 +11,6 @@ const ALLOWED_FIELDS = [
 ];
 
 async function getUid(req: NextRequest): Promise<string | null> {
-  // Try Firebase token first (most secure)
   const token = req.headers.get("Authorization")?.replace("Bearer ", "");
   if (token) {
     try {
@@ -20,8 +18,6 @@ async function getUid(req: NextRequest): Promise<string | null> {
       return decoded.uid;
     } catch {}
   }
-
-  // Fall back to x-user-id header (already used across your app)
   return req.headers.get("x-user-id");
 }
 
@@ -33,7 +29,6 @@ export async function GET(req: NextRequest) {
     const doc = await adminDb.collection("users").doc(uid).get();
     if (!doc.exists) return NextResponse.json(null);
 
-    // Only return safe fields to the client
     const data = doc.data() ?? {};
     return NextResponse.json({
       fullName: data.fullName ?? "",
@@ -58,7 +53,6 @@ export async function PATCH(req: NextRequest) {
 
     const body = await req.json();
 
-    // Only save whitelisted fields — never let client overwrite plan or subscriptionId
     const safeData: Record<string, string> = {};
     for (const field of ALLOWED_FIELDS) {
       if (body[field] !== undefined) {
