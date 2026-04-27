@@ -23,6 +23,7 @@ const PLAN_LABELS: Record<string, string> = {
   free: "FREE",
   pro_monthly: "PRO MONTHLY",
   pro_annual: "PRO ANNUAL",
+  PRO: "PRO",
 };
 
 export default function SettingsPage() {
@@ -45,6 +46,7 @@ export default function SettingsPage() {
   const [saveError, setSaveError] = useState("");
   const [resetSent, setResetSent] = useState(false);
   const [plan, setPlan] = useState("free");
+  const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -53,45 +55,41 @@ export default function SettingsPage() {
         return;
       }
       setUid(u.uid);
-
-      // Pre-fill from Firebase Auth immediately
       setSettings((p) => ({
         ...p,
         email: u.email || "",
         fullName: u.displayName || "",
       }));
 
-      // Load saved settings from Firestore — send token for auth
       try {
         const token = await u.getIdToken();
+        // ✅ correct path: /api/settings
         const res = await fetch("/api/settings", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "x-user-id": u.uid,
-          },
+          headers: { Authorization: `Bearer ${token}`, "x-user-id": u.uid },
         });
         if (res.ok) {
           const data = await res.json();
           if (data) {
-            setSettings((p) => ({
-              ...p,
-              ...data,
-              email: u.email || p.email, // email always comes from Firebase Auth
-            }));
+            setSettings((p) => ({ ...p, ...data, email: u.email || p.email }));
             if (data.plan) setPlan(data.plan);
           }
         }
       } catch {
-        // Fall back to localStorage cache
         const local = localStorage.getItem("sewer_settings");
         if (local) {
-          const cached = JSON.parse(local);
-          setSettings((p) => ({ ...p, ...cached, email: u.email || p.email }));
+          try {
+            const cached = JSON.parse(local);
+            setSettings((p) => ({
+              ...p,
+              ...cached,
+              email: u.email || p.email,
+            }));
+          } catch {}
         }
       }
     });
     return () => unsub();
-  }, []);
+  }, [router]);
 
   const update = (k: string, v: string) =>
     setSettings((p) => ({ ...p, [k]: v }));
@@ -117,12 +115,10 @@ export default function SettingsPage() {
         throw new Error(err.error || "Save failed");
       }
 
-      // Cache locally as backup
       localStorage.setItem("sewer_settings", JSON.stringify(settings));
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (err: any) {
-      // Still save locally so work isn't lost
       localStorage.setItem("sewer_settings", JSON.stringify(settings));
       setSaveError(err?.message || "Could not save to server — saved locally");
       setTimeout(() => setSaveError(""), 4000);
@@ -145,20 +141,50 @@ export default function SettingsPage() {
     router.replace("/login");
   };
 
-  const isPro = plan === "pro_monthly" || plan === "pro_annual";
+  const handleSubscribe = async (planKey: "PRO_MONTHLY" | "PRO_ANNUALLY") => {
+    setCheckoutLoading(planKey);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch("/api/lemonsqueezy/checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          plan: planKey,
+          email: settings.email,
+          name: settings.fullName,
+        }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert(data.error || "Failed to create checkout");
+      }
+    } catch {
+      alert("Something went wrong. Please try again.");
+    } finally {
+      setCheckoutLoading(null);
+    }
+  };
 
-  // ── Styles ──────────────────────────────────────────────────────────────────
+  const isPro =
+    plan === "pro_monthly" || plan === "pro_annual" || plan === "PRO";
 
+  // ── Styles ──
   const inp: React.CSSProperties = {
-    height: "36px",
+    height: "38px",
     borderRadius: "6px",
     border: "1px solid #E2E8F0",
-    padding: "0 10px",
+    padding: "0 12px",
     fontSize: "13px",
     outline: "none",
     boxSizing: "border-box",
     background: "#F8FAFC",
     width: "100%",
+    fontFamily: "Inter, Arial, sans-serif",
   };
   const lbl: React.CSSProperties = {
     display: "block",
@@ -185,7 +211,16 @@ export default function SettingsPage() {
     border: "none",
     background: active ? "#0F2A4A" : "transparent",
     color: active ? "#fff" : "#64748B",
+    fontFamily: "Inter, Arial, sans-serif",
   });
+
+  // Avatar initials
+  const initials = (settings.fullName || settings.email || "U")
+    .split(" ")
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
 
   return (
     <div
@@ -196,19 +231,121 @@ export default function SettingsPage() {
         fontFamily: "Inter, Arial, sans-serif",
       }}
     >
-      {/* Header */}
+      {/* ── Profile Card ── */}
+      <div
+        style={{
+          ...card,
+          display: "flex",
+          alignItems: "center",
+          gap: "20px",
+          background: "linear-gradient(135deg, #0F2A4A 0%, #1a3d6b 100%)",
+          border: "none",
+          marginBottom: "24px",
+        }}
+      >
+        {/* Avatar */}
+        <div
+          style={{
+            width: "64px",
+            height: "64px",
+            borderRadius: "50%",
+            background: "#2D8C4E",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "22px",
+            fontWeight: 800,
+            color: "#fff",
+            flexShrink: 0,
+            letterSpacing: "-0.5px",
+          }}
+        >
+          {initials}
+        </div>
+        {/* Info */}
+        <div style={{ flex: 1 }}>
+          <div
+            style={{
+              fontSize: "18px",
+              fontWeight: 800,
+              color: "#fff",
+              marginBottom: "2px",
+            }}
+          >
+            {settings.fullName || "Your Name"}
+          </div>
+          <div
+            style={{ fontSize: "13px", color: "#94A3B8", marginBottom: "6px" }}
+          >
+            {settings.email}
+          </div>
+          <div
+            style={{
+              display: "flex",
+              gap: "8px",
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
+            <span
+              style={{
+                padding: "3px 10px",
+                borderRadius: "20px",
+                fontSize: "11px",
+                fontWeight: 700,
+                background: isPro
+                  ? "rgba(45,140,78,0.25)"
+                  : "rgba(255,255,255,0.1)",
+                color: isPro ? "#4ade80" : "#94A3B8",
+                border: isPro
+                  ? "1px solid rgba(74,222,128,0.3)"
+                  : "1px solid rgba(255,255,255,0.15)",
+              }}
+            >
+              {PLAN_LABELS[plan] ?? plan.toUpperCase()}
+            </span>
+            {settings.companyName && (
+              <span style={{ fontSize: "12px", color: "#64748B" }}>
+                {settings.companyName}
+              </span>
+            )}
+          </div>
+        </div>
+        {/* Upgrade button if free */}
+        {!isPro && (
+          <button
+            onClick={() => setActiveTab("subscription")}
+            style={{
+              padding: "8px 18px",
+              borderRadius: "8px",
+              border: "none",
+              background: "#2D8C4E",
+              color: "#fff",
+              fontSize: "13px",
+              fontWeight: 700,
+              cursor: "pointer",
+              flexShrink: 0,
+              fontFamily: "Inter, Arial, sans-serif",
+            }}
+          >
+            Upgrade ↑
+          </button>
+        )}
+      </div>
+
+      {/* ── Header ── */}
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          marginBottom: "24px",
+          marginBottom: "20px",
         }}
       >
         <div>
           <h1
             style={{
-              fontSize: "22px",
+              fontSize: "20px",
               fontWeight: 800,
               color: "#0F2A4A",
               margin: 0,
@@ -245,6 +382,7 @@ export default function SettingsPage() {
               fontSize: "13px",
               fontWeight: 700,
               cursor: saving ? "not-allowed" : "pointer",
+              fontFamily: "Inter, Arial, sans-serif",
             }}
           >
             {saving ? "Saving..." : "Save Changes"}
@@ -252,36 +390,31 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* ── Tabs ── */}
       <div
         style={{
           display: "flex",
           gap: "4px",
           marginBottom: "20px",
           background: "#fff",
-          padding: "8px",
+          padding: "6px",
           borderRadius: "10px",
           border: "1px solid #E2E8F0",
         }}
       >
-        <button
-          style={tabStyle(activeTab === "account")}
-          onClick={() => setActiveTab("account")}
-        >
-          👤 Account
-        </button>
-        <button
-          style={tabStyle(activeTab === "company")}
-          onClick={() => setActiveTab("company")}
-        >
-          🏢 Company
-        </button>
-        <button
-          style={tabStyle(activeTab === "subscription")}
-          onClick={() => setActiveTab("subscription")}
-        >
-          💳 Subscription
-        </button>
+        {(["account", "company", "subscription"] as const).map((t) => (
+          <button
+            key={t}
+            style={tabStyle(activeTab === t)}
+            onClick={() => setActiveTab(t)}
+          >
+            {t === "account"
+              ? "👤 Account"
+              : t === "company"
+                ? "🏢 Company"
+                : "💳 Subscription"}
+          </button>
+        ))}
       </div>
 
       {/* ── ACCOUNT TAB ── */}
@@ -383,6 +516,7 @@ export default function SettingsPage() {
                 fontWeight: 600,
                 cursor: "pointer",
                 color: "#0F2A4A",
+                fontFamily: "inherit",
               }}
             >
               Send Password Reset Email
@@ -411,6 +545,7 @@ export default function SettingsPage() {
                 fontSize: "13px",
                 fontWeight: 700,
                 cursor: "pointer",
+                fontFamily: "inherit",
               }}
             >
               Sign Out
@@ -427,7 +562,7 @@ export default function SettingsPage() {
               fontSize: "14px",
               fontWeight: 700,
               color: "#0F2A4A",
-              margin: "0 0 16px",
+              margin: "0 0 8px",
             }}
           >
             Company Information
@@ -435,7 +570,7 @@ export default function SettingsPage() {
           <p
             style={{ fontSize: "12px", color: "#94A3B8", marginBottom: "16px" }}
           >
-            This info is used as defaults in your reports.
+            Used as defaults in your reports.
           </p>
           <div
             style={{
@@ -525,56 +660,7 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            {/* Only show upgrade card if not already pro */}
-            {!isPro && (
-              <div
-                style={{
-                  background:
-                    "linear-gradient(135deg, #0F2A4A 0%, #1e4a7a 100%)",
-                  borderRadius: "10px",
-                  padding: "20px",
-                  color: "#fff",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: "16px",
-                    fontWeight: 800,
-                    marginBottom: "6px",
-                  }}
-                >
-                  Upgrade to Pro
-                </div>
-                <div
-                  style={{
-                    fontSize: "13px",
-                    color: "#CBD5E1",
-                    marginBottom: "16px",
-                    lineHeight: "1.6",
-                  }}
-                >
-                  Unlimited reports · Custom templates · Priority support · PDF
-                  watermark removed
-                </div>
-                <button
-                  onClick={() => router.push("/billing")}
-                  style={{
-                    background: "#2D8C4E",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: "8px",
-                    padding: "10px 24px",
-                    fontSize: "14px",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  Subscribe Now
-                </button>
-              </div>
-            )}
-
-            {isPro && (
+            {isPro ? (
               <div
                 style={{
                   background: "#F0FDF4",
@@ -597,6 +683,140 @@ export default function SettingsPage() {
                   To manage or cancel your subscription, visit your LemonSqueezy
                   customer portal.
                 </div>
+              </div>
+            ) : (
+              /* Upgrade cards — wired to real checkout */
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "14px",
+                }}
+              >
+                {[
+                  {
+                    key: "PRO_MONTHLY" as const,
+                    name: "Pro Monthly",
+                    price: "$49",
+                    period: "/mo",
+                    badge: null,
+                    features: [
+                      "Unlimited reports",
+                      "Custom templates",
+                      "No watermark",
+                      "Priority support",
+                    ],
+                    color: "#2D8C4E",
+                  },
+                  {
+                    key: "PRO_ANNUALLY" as const,
+                    name: "Pro Annual",
+                    price: "$499.95",
+                    period: "/yr",
+                    badge: "Save 15%",
+                    features: [
+                      "Unlimited reports",
+                      "Custom templates",
+                      "No watermark",
+                      "Priority support",
+                    ],
+                    color: "#0F2A4A",
+                  },
+                ].map((plan) => (
+                  <div
+                    key={plan.key}
+                    style={{
+                      border: `2px solid ${plan.color}`,
+                      borderRadius: "12px",
+                      padding: "20px",
+                      position: "relative",
+                    }}
+                  >
+                    {plan.badge && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: "-10px",
+                          right: "16px",
+                          background: "#2D8C4E",
+                          color: "#fff",
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          padding: "2px 10px",
+                          borderRadius: "20px",
+                        }}
+                      >
+                        {plan.badge}
+                      </div>
+                    )}
+                    <div
+                      style={{
+                        fontSize: "15px",
+                        fontWeight: 800,
+                        color: plan.color,
+                        marginBottom: "4px",
+                      }}
+                    >
+                      {plan.name}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "24px",
+                        fontWeight: 800,
+                        color: "#0F2A4A",
+                        marginBottom: "12px",
+                      }}
+                    >
+                      {plan.price}
+                      <span
+                        style={{
+                          fontSize: "13px",
+                          color: "#64748B",
+                          fontWeight: 400,
+                        }}
+                      >
+                        {plan.period}
+                      </span>
+                    </div>
+                    {plan.features.map((f) => (
+                      <div
+                        key={f}
+                        style={{
+                          fontSize: "12px",
+                          color: "#64748B",
+                          marginBottom: "4px",
+                        }}
+                      >
+                        ✓ {f}
+                      </div>
+                    ))}
+                    <button
+                      onClick={() => handleSubscribe(plan.key)}
+                      disabled={checkoutLoading === plan.key}
+                      style={{
+                        width: "100%",
+                        marginTop: "16px",
+                        padding: "10px",
+                        borderRadius: "8px",
+                        border: "none",
+                        background:
+                          checkoutLoading === plan.key ? "#94A3B8" : plan.color,
+                        color: "#fff",
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        cursor:
+                          checkoutLoading === plan.key
+                            ? "not-allowed"
+                            : "pointer",
+                        fontFamily: "Inter, Arial, sans-serif",
+                      }}
+                    >
+                      {checkoutLoading === plan.key
+                        ? "Redirecting..."
+                        : "Subscribe Now →"}
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
           </div>
