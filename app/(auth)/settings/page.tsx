@@ -19,6 +19,12 @@ type UserSettings = {
   licenseNumber: string;
 };
 
+const PLAN_LABELS: Record<string, string> = {
+  free: "FREE",
+  pro_monthly: "PRO MONTHLY",
+  pro_annual: "PRO ANNUAL",
+};
+
 export default function SettingsPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<
@@ -36,8 +42,9 @@ export default function SettingsPage() {
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [resetSent, setResetSent] = useState(false);
-  const [plan] = useState("FREE");
+  const [plan, setPlan] = useState("free");
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -47,32 +54,40 @@ export default function SettingsPage() {
       }
       setUid(u.uid);
 
-      // Pre-fill from Firebase Auth
+      // Pre-fill from Firebase Auth immediately
       setSettings((p) => ({
         ...p,
         email: u.email || "",
         fullName: u.displayName || "",
       }));
 
-      // Then load saved settings from Firestore via API
+      // Load saved settings from Firestore — send token for auth
       try {
+        const token = await u.getIdToken();
         const res = await fetch("/api/settings", {
-          headers: { "x-user-id": u.uid },
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "x-user-id": u.uid,
+          },
         });
         if (res.ok) {
           const data = await res.json();
-          if (data)
-            setSettings((p) => ({ ...p, ...data, email: u.email || p.email }));
+          if (data) {
+            setSettings((p) => ({
+              ...p,
+              ...data,
+              email: u.email || p.email, // email always comes from Firebase Auth
+            }));
+            if (data.plan) setPlan(data.plan);
+          }
         }
       } catch {
-        // Fall back to localStorage
+        // Fall back to localStorage cache
         const local = localStorage.getItem("sewer_settings");
-        if (local)
-          setSettings((p) => ({
-            ...p,
-            ...JSON.parse(local),
-            email: u.email || p.email,
-          }));
+        if (local) {
+          const cached = JSON.parse(local);
+          setSettings((p) => ({ ...p, ...cached, email: u.email || p.email }));
+        }
       }
     });
     return () => unsub();
@@ -84,17 +99,33 @@ export default function SettingsPage() {
   const handleSave = async () => {
     if (!uid) return;
     setSaving(true);
+    setSaveError("");
     try {
-      await fetch("/api/settings", {
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch("/api/settings", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", "x-user-id": uid },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "x-user-id": uid,
+        },
         body: JSON.stringify(settings),
       });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Save failed");
+      }
+
+      // Cache locally as backup
       localStorage.setItem("sewer_settings", JSON.stringify(settings));
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
-    } catch {
+    } catch (err: any) {
+      // Still save locally so work isn't lost
       localStorage.setItem("sewer_settings", JSON.stringify(settings));
+      setSaveError(err?.message || "Could not save to server — saved locally");
+      setTimeout(() => setSaveError(""), 4000);
     } finally {
       setSaving(false);
     }
@@ -113,6 +144,10 @@ export default function SettingsPage() {
     await signOut(auth);
     router.replace("/login");
   };
+
+  const isPro = plan === "pro_monthly" || plan === "pro_annual";
+
+  // ── Styles ──────────────────────────────────────────────────────────────────
 
   const inp: React.CSSProperties = {
     height: "36px",
@@ -161,6 +196,7 @@ export default function SettingsPage() {
         fontFamily: "Inter, Arial, sans-serif",
       }}
     >
+      {/* Header */}
       <div
         style={{
           display: "flex",
@@ -192,6 +228,11 @@ export default function SettingsPage() {
               ✓ Saved
             </span>
           )}
+          {saveError && (
+            <span style={{ fontSize: "12px", color: "#DC2626", maxWidth: 200 }}>
+              {saveError}
+            </span>
+          )}
           <button
             onClick={handleSave}
             disabled={saving}
@@ -211,6 +252,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      {/* Tabs */}
       <div
         style={{
           display: "flex",
@@ -242,6 +284,7 @@ export default function SettingsPage() {
         </button>
       </div>
 
+      {/* ── ACCOUNT TAB ── */}
       {activeTab === "account" && (
         <>
           <div style={card}>
@@ -376,6 +419,7 @@ export default function SettingsPage() {
         </>
       )}
 
+      {/* ── COMPANY TAB ── */}
       {activeTab === "company" && (
         <div style={card}>
           <h3
@@ -440,6 +484,7 @@ export default function SettingsPage() {
         </div>
       )}
 
+      {/* ── SUBSCRIPTION TAB ── */}
       {activeTab === "subscription" && (
         <>
           <div style={card}>
@@ -467,60 +512,95 @@ export default function SettingsPage() {
                   borderRadius: "20px",
                   fontSize: "14px",
                   fontWeight: 800,
-                  background: "#F1F5F9",
-                  color: "#64748B",
+                  background: isPro ? "#E8F5EE" : "#F1F5F9",
+                  color: isPro ? "#2D8C4E" : "#64748B",
                 }}
               >
-                {plan}
+                {PLAN_LABELS[plan] ?? plan.toUpperCase()}
               </div>
               <div style={{ fontSize: "13px", color: "#64748B" }}>
-                Limited to 5 reports per month
+                {isPro
+                  ? "Unlimited reports · All features unlocked"
+                  : "Limited to 5 reports per month"}
               </div>
             </div>
-            <div
-              style={{
-                background: "linear-gradient(135deg, #0F2A4A 0%, #1e4a7a 100%)",
-                borderRadius: "10px",
-                padding: "20px",
-                color: "#fff",
-              }}
-            >
+
+            {/* Only show upgrade card if not already pro */}
+            {!isPro && (
               <div
                 style={{
-                  fontSize: "16px",
-                  fontWeight: 800,
-                  marginBottom: "6px",
-                }}
-              >
-                Upgrade to Pro
-              </div>
-              <div
-                style={{
-                  fontSize: "13px",
-                  color: "#CBD5E1",
-                  marginBottom: "16px",
-                  lineHeight: "1.6",
-                }}
-              >
-                Unlimited reports · Custom templates · Priority support · PDF
-                watermark removed
-              </div>
-              <button
-                style={{
-                  background: "#2D8C4E",
+                  background:
+                    "linear-gradient(135deg, #0F2A4A 0%, #1e4a7a 100%)",
+                  borderRadius: "10px",
+                  padding: "20px",
                   color: "#fff",
-                  border: "none",
-                  borderRadius: "8px",
-                  padding: "10px 24px",
-                  fontSize: "14px",
-                  fontWeight: 700,
-                  cursor: "pointer",
                 }}
               >
-                Subscribe Now
-              </button>
-            </div>
+                <div
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: 800,
+                    marginBottom: "6px",
+                  }}
+                >
+                  Upgrade to Pro
+                </div>
+                <div
+                  style={{
+                    fontSize: "13px",
+                    color: "#CBD5E1",
+                    marginBottom: "16px",
+                    lineHeight: "1.6",
+                  }}
+                >
+                  Unlimited reports · Custom templates · Priority support · PDF
+                  watermark removed
+                </div>
+                <button
+                  onClick={() => router.push("/billing")}
+                  style={{
+                    background: "#2D8C4E",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: "8px",
+                    padding: "10px 24px",
+                    fontSize: "14px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  Subscribe Now
+                </button>
+              </div>
+            )}
+
+            {isPro && (
+              <div
+                style={{
+                  background: "#F0FDF4",
+                  border: "1px solid #BBF7D0",
+                  borderRadius: "10px",
+                  padding: "16px",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: 700,
+                    color: "#16A34A",
+                    marginBottom: "4px",
+                  }}
+                >
+                  ✓ Pro Active
+                </div>
+                <div style={{ fontSize: "13px", color: "#64748B" }}>
+                  To manage or cancel your subscription, visit your LemonSqueezy
+                  customer portal.
+                </div>
+              </div>
+            )}
           </div>
+
           <div style={card}>
             <h3
               style={{
@@ -540,7 +620,9 @@ export default function SettingsPage() {
                 textAlign: "center",
               }}
             >
-              No billing history available on the free plan.
+              {isPro
+                ? "For invoices and billing history, check your email receipts from LemonSqueezy."
+                : "No billing history available on the free plan."}
             </div>
           </div>
         </>
