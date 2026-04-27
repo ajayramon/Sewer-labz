@@ -5,6 +5,10 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { report, defects } = body;
 
+    if (!report) {
+      return NextResponse.json({ error: "No report data" }, { status: 400 });
+    }
+
     const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -141,10 +145,11 @@ export async function POST(req: NextRequest) {
     .page-break { page-break-after: always; }
     .cover { page-break-after: always; }
     .defect-item { page-break-inside: avoid; }
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
 </style>
 </head>
-<body>
+<body onload="window.print()">
 
 <!-- COVER PAGE -->
 <div class="cover">
@@ -157,24 +162,16 @@ export async function POST(req: NextRequest) {
   <div class="cover-photo-wrap">
     ${
       report.propertyPhotos && report.propertyPhotos.length === 1
-        ? `
-      <img src="${report.propertyPhotos[0]}" class="cover-photo-1" alt="Property" />
-    `
+        ? `<img src="${report.propertyPhotos[0]}" class="cover-photo-1" alt="Property" />`
         : report.propertyPhotos && report.propertyPhotos.length === 2
-          ? `
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%;max-width:680px;">
-        ${report.propertyPhotos.map((p: string) => `<img src="${p}" style="width:100%;height:260px;object-fit:cover;border-radius:6px;border:1px solid #ddd;display:block;" alt="Property" />`).join("")}
-      </div>
-    `
+          ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%;max-width:680px;">
+               ${report.propertyPhotos.map((p: string) => `<img src="${p}" style="width:100%;height:260px;object-fit:cover;border-radius:6px;border:1px solid #ddd;display:block;" alt="Property" />`).join("")}
+             </div>`
           : report.propertyPhotos && report.propertyPhotos.length >= 3
-            ? `
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:100%;max-width:700px;">
-        ${report.propertyPhotos.map((p: string) => `<img src="${p}" style="width:100%;height:210px;object-fit:cover;border-radius:6px;border:1px solid #ddd;display:block;" alt="Property" />`).join("")}
-      </div>
-    `
-            : `
-      <div style="width:100%;max-width:580px;height:370px;background:#f0f0f0;border-radius:6px;border:1px solid #ddd;display:flex;align-items:center;justify-content:center;font-size:14px;color:#999;margin:0 auto;">Property Photo</div>
-    `
+            ? `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:100%;max-width:700px;">
+                 ${report.propertyPhotos.map((p: string) => `<img src="${p}" style="width:100%;height:210px;object-fit:cover;border-radius:6px;border:1px solid #ddd;display:block;" alt="Property" />`).join("")}
+               </div>`
+            : `<div style="width:100%;max-width:580px;height:370px;background:#f0f0f0;border-radius:6px;border:1px solid #ddd;display:flex;align-items:center;justify-content:center;font-size:14px;color:#999;margin:0 auto;">Property Photo</div>`
     }
   </div>
 
@@ -211,11 +208,7 @@ export async function POST(req: NextRequest) {
       "Statement of Service",
       "Understanding Sewer Material & Defects",
     ]
-      .map(
-        (item) => `
-      <div class="toc-item">${item}</div>
-    `,
-      )
+      .map((item) => `<div class="toc-item">${item}</div>`)
       .join("")}
   </div>
   <div class="report-footer">
@@ -258,7 +251,6 @@ export async function POST(req: NextRequest) {
       <span>Inspection Report Exclusively For: ${report.fileNumber || report.clientName || ""}</span>
     </div>
     <div class="section-subtitle">Client & Site Information</div>
-
     <div class="client-wrap">
       <div style="flex:1;">
         <div style="font-weight:700;font-size:13px;text-decoration:underline;margin-bottom:10px;">FILE/DATE/TIME</div>
@@ -268,7 +260,12 @@ export async function POST(req: NextRequest) {
           ["Location", report.location],
           ["Date", report.inspectedAt],
           ["Time", report.inspectionTime],
-          ["People Present", report.peoplePresent],
+          [
+            "People Present",
+            Array.isArray(report.peoplePresent)
+              ? report.peoplePresent.join(", ")
+              : report.peoplePresent,
+          ],
           ["Buyer's Agent", report.buyersAgent],
           ["Building Occupied", report.buildingOccupied],
           ["Weather/Soil", report.weather],
@@ -276,27 +273,24 @@ export async function POST(req: NextRequest) {
           .filter(([, v]) => v)
           .map(
             ([label, value]) => `
-          <div class="info-row">
-            <span class="info-label">${label}</span>
-            <span class="info-value">${value}</span>
-          </div>
-        `,
+            <div class="info-row">
+              <span class="info-label">${label}</span>
+              <span class="info-value">${value}</span>
+            </div>`,
           )
           .join("")}
       </div>
       ${
         report.propertyPhotos && report.propertyPhotos.length > 0
-          ? `
-      <div class="client-photos">
-        ${report.propertyPhotos
-          .slice(0, 2)
-          .map(
-            (p: string) =>
-              `<img src="${p}" class="client-photo" alt="Property" />`,
-          )
-          .join("")}
-      </div>
-      `
+          ? `<div class="client-photos">
+             ${report.propertyPhotos
+               .slice(0, 2)
+               .map(
+                 (p: string) =>
+                   `<img src="${p}" class="client-photo" alt="Property" />`,
+               )
+               .join("")}
+           </div>`
           : ""
       }
     </div>
@@ -306,54 +300,51 @@ export async function POST(req: NextRequest) {
     ${
       report.cameraDirection1 || report.cameraDirection2
         ? `
-    <div class="piping-box">
-      <strong>PIPING</strong><br>
-      The camera went in the following direction(s):<br>
-      ${report.cameraDirection1 ? `1st Direction: ${report.cameraDirection1}` : ""}
-      ${report.cameraDirection2 ? `<br>2nd Direction: ${report.cameraDirection2}` : ""}
-      ${report.pipingNotes ? `<br>${report.pipingNotes}` : ""}
-    </div>
-    `
+      <div class="piping-box">
+        <strong>PIPING</strong><br>
+        The camera went in the following direction(s):<br>
+        ${report.cameraDirection1 ? `1st Direction: ${report.cameraDirection1}` : ""}
+        ${report.cameraDirection2 ? `<br>2nd Direction: ${report.cameraDirection2}` : ""}
+        ${report.pipingNotes ? `<br>${report.pipingNotes}` : ""}
+      </div>`
         : ""
     }
 
     ${
       report.cleanoutLocation
         ? `
-    <div class="system-row">
-      <div class="system-label">Location of Camera Entry</div>
-      <div class="system-value">${report.cleanoutLocation}</div>
-    </div>`
+      <div class="system-row">
+        <div class="system-label">Location of Camera Entry</div>
+        <div class="system-value">${report.cleanoutLocation}</div>
+      </div>`
         : ""
     }
 
     ${
       report.pipeMaterials && report.pipeMaterials.length > 0
         ? `
-    <div class="system-row">
-      <div class="system-label">Sewer Pipe Materials</div>
-      <div class="system-value">${report.pipeMaterials.join(", ")}</div>
-    </div>`
+      <div class="system-row">
+        <div class="system-label">Sewer Pipe Materials</div>
+        <div class="system-value">${report.pipeMaterials.join(", ")}</div>
+      </div>`
         : ""
     }
 
     ${
-      report.videoLinks && report.videoLinks.length > 0
+      report.videoLinks && report.videoLinks.filter((l: string) => l).length > 0
         ? `
-    <div class="system-row">
-      <div class="system-label">Sewer Video Link(s)</div>
-      <div class="system-value">
-        ${report.videoLinks
-          .map(
-            (link: string, i: number) => `
-          <div style="margin-bottom:4px;">
-            Link ${i + 1}: <a href="${link}" style="color:#0066cc;">${link}</a>
-          </div>
-        `,
-          )
-          .join("")}
-      </div>
-    </div>`
+      <div class="system-row">
+        <div class="system-label">Sewer Video Link(s)</div>
+        <div class="system-value">
+          ${report.videoLinks
+            .filter((l: string) => l)
+            .map(
+              (link: string, i: number) => `
+            <div style="margin-bottom:4px;">Link ${i + 1}: <a href="${link}" style="color:#0066cc;">${link}</a></div>`,
+            )
+            .join("")}
+        </div>
+      </div>`
         : ""
     }
   </div>
@@ -372,52 +363,48 @@ export async function POST(req: NextRequest) {
     </div>
     <div class="section-subtitle">Sewer Piping Conditions</div>
 
-    ${defects.length === 0 ? '<p style="color:#999;font-size:13px;margin-top:12px;">No conditions recorded.</p>' : ""}
-
-    ${defects
-      .map(
-        (d: any, i: number) => `
-    <div class="defect-item">
-      <p class="defect-desc">
-        <strong>-@ ${d.videoTimeH || "--"}:${d.videoTimeM || "--"} / ${d.footageStart || "0"} ft approx. in video the following condition was observed.</strong>
-        ${
-          d.conditionType !== "Select Condition Type"
-            ? `<strong> ${d.conditionType}${
-                d.severity === "Major"
-                  ? "; Major defect."
-                  : d.severity === "Moderate"
-                    ? "; moderate."
-                    : d.severity === "Minor"
-                      ? "; minor."
-                      : d.severity === "Suggested Maintenance"
-                        ? "; suggested maintenance."
-                        : "."
-              }</strong>`
-            : ""
-        }
-        ${d.narrative ? ` ${d.narrative}` : ""}
-      </p>
-      ${
-        d.images && d.images.length > 0
-          ? `
-      <div class="defect-photos">
-        ${d.images
-          .map(
-            (img: any) => `
-          <div>
-            <img src="${img.url}" class="defect-photo" alt="Inspection photo" />
-          </div>
-        `,
-          )
-          .join("")}
-      </div>
-      `
-          : ""
-      }
-    </div>
-    `,
-      )
-      .join("")}
+    ${
+      !defects || defects.length === 0
+        ? '<p style="color:#999;font-size:13px;margin-top:12px;">No conditions recorded.</p>'
+        : defects
+            .map(
+              (d: any) => `
+        <div class="defect-item">
+          <p class="defect-desc">
+            <strong>-@ ${d.videoTimeH || "--"}:${d.videoTimeM || "--"} / ${d.footageStart || "0"} ft approx. in video the following condition was observed.</strong>
+            ${
+              d.conditionType && d.conditionType !== "Select Condition Type"
+                ? `<strong> ${d.conditionType}${
+                    d.severity === "Major"
+                      ? "; Major defect."
+                      : d.severity === "Moderate"
+                        ? "; moderate."
+                        : d.severity === "Minor"
+                          ? "; minor."
+                          : d.severity === "Suggested Maintenance"
+                            ? "; suggested maintenance."
+                            : "."
+                  }</strong>`
+                : ""
+            }
+            ${d.narrative ? ` ${d.narrative}` : ""}
+          </p>
+          ${
+            d.images && d.images.length > 0
+              ? `<div class="defect-photos">
+                 ${d.images
+                   .map(
+                     (img: any) => `
+                   <div><img src="${img.url}" class="defect-photo" alt="Inspection photo" /></div>`,
+                   )
+                   .join("")}
+               </div>`
+              : ""
+          }
+        </div>`,
+            )
+            .join("")
+    }
   </div>
   <div class="report-footer">
     This report was prepared for the client listed above in accordance with our inspection agreement.<br>
@@ -432,32 +419,28 @@ export async function POST(req: NextRequest) {
       <span>${report.inspectedAt || ""}</span>
       <span>Inspection Report Exclusively For: ${report.fileNumber || report.clientName || ""}</span>
     </div>
-
     <div style="font-size:15px;font-weight:700;border-bottom:1px solid #000;padding-bottom:4px;margin-bottom:12px;">
       End of Section — Comments
     </div>
-
     ${report.notes ? `<p style="font-size:13px;line-height:1.8;margin-bottom:16px;">${report.notes}</p>` : ""}
 
     ${
       report.corrections &&
       Object.entries(report.corrections).some(([, v]) => v && v !== "N/A")
         ? `
-    <div style="font-size:15px;font-weight:700;border-bottom:1px solid #000;padding-bottom:4px;margin-bottom:12px;margin-top:20px;">
-      Corrective Action Recommendations
-    </div>
-    ${Object.entries(report.corrections)
-      .filter(([, v]) => v && v !== "N/A")
-      .map(
-        ([label, value]) => `
-      <div class="correction-row">
-        <span class="correction-label">${label}</span>
-        <span class="correction-value">${value}</span>
+      <div style="font-size:15px;font-weight:700;border-bottom:1px solid #000;padding-bottom:4px;margin-bottom:12px;margin-top:20px;">
+        Corrective Action Recommendations
       </div>
-    `,
-      )
-      .join("")}
-    `
+      ${Object.entries(report.corrections)
+        .filter(([, v]) => v && v !== "N/A")
+        .map(
+          ([label, value]) => `
+          <div class="correction-row">
+            <span class="correction-label">${label}</span>
+            <span class="correction-value">${value}</span>
+          </div>`,
+        )
+        .join("")}`
         : ""
     }
 
@@ -466,24 +449,15 @@ export async function POST(req: NextRequest) {
     <div style="font-size:15px;font-weight:700;border-bottom:1px solid #000;padding-bottom:4px;margin-bottom:12px;margin-top:24px;">
       End of Report — Recommendations
     </div>
-
     ${
       report.endOfReport &&
       Object.values(report.endOfReport).some((v) => v && v !== "Select...")
-        ? `
-      ${Object.entries(report.endOfReport)
-        .filter(([, v]) => v && v !== "Select...")
-        .map(
-          ([, value]) => `
-        <div class="end-statement">${value}</div>
-      `,
-        )
-        .join("")}
-    `
-        : `
-      <div class="end-statement">Given the condition(s) above we recommend full evaluations and/or corrections with written findings and costs to cure by a competent licensed plumbing contractor before the end/close of the inspection contingency period.</div>
-      <div class="end-statement">Recommend sewer inspections after repairs are made to ensure efficacy of work and to inspect any areas of the sewer lateral not visible due to defect(s).</div>
-    `
+        ? Object.entries(report.endOfReport)
+            .filter(([, v]) => v && v !== "Select...")
+            .map(([, value]) => `<div class="end-statement">${value}</div>`)
+            .join("")
+        : `<div class="end-statement">Given the condition(s) above we recommend full evaluations and/or corrections with written findings and costs to cure by a competent licensed plumbing contractor before the end/close of the inspection contingency period.</div>
+         <div class="end-statement">Recommend sewer inspections after repairs are made to ensure efficacy of work and to inspect any areas of the sewer lateral not visible due to defect(s).</div>`
     }
   </div>
   <div class="report-footer">
@@ -500,7 +474,7 @@ export async function POST(req: NextRequest) {
       <span>Inspection Report Exclusively For: ${report.fileNumber || report.clientName || ""}</span>
     </div>
     <div class="section-title">Statement of Service</div>
-    <p style="font-size:13px;line-height:1.8;margin-bottom:14px;">Sewer Labz was retained for a survey of the listed structure's main sewer line in an effort to identify any areas of suspect blockages, deficiencies or damage and to document the areas for further review and or action by associated trades professional. Further investigations into these areas or destructive testing may reveal additional conditions that were not readily visible at the time of inspection.</p>
+    <p style="font-size:13px;line-height:1.8;margin-bottom:14px;">Sewer Labz was retained for a survey of the listed structure's main sewer line in an effort to identify any areas of suspect blockages, deficiencies or damage and to document the areas for further review and or action by associated trades professional.</p>
     <p style="font-size:13px;line-height:1.8;margin-bottom:14px;">This report is based on information obtained at the site at the given date and time of the inspection. Findings are documented with videos and visual photographs of the impacted areas. The sewer survey is limited to maximum allowance of approximately 150 feet, arrival at blockage, non-passable debris, or arrival at city sewer.</p>
     <p style="font-size:13px;line-height:1.8;margin-bottom:14px;">This report is for the exclusive use of our client and is not intended for any other purpose. We can make no representations regarding conditions that may be present but concealed or inaccessible during the survey.</p>
     <p style="font-size:13px;line-height:1.8;margin-bottom:14px;">We recommend all areas showing anomalies should be evaluated further to find out the cause and be repaired. Our recommendations are not intended as criticisms of the structure, but rather as professional opinions regarding conditions that we observed at the time of our inspection.</p>
@@ -522,9 +496,7 @@ export async function POST(req: NextRequest) {
     <div class="section-title">Understanding Sewer Material & Defects</div>
     <div style="text-align:center;font-weight:700;text-decoration:underline;margin-bottom:10px;">Sewer Line Material</div>
     <table class="material-table">
-      <thead>
-        <tr><th>Type</th><th>Life Expectancy</th></tr>
-      </thead>
+      <thead><tr><th>Type</th><th>Life Expectancy</th></tr></thead>
       <tbody>
         ${[
           ["Standard Dimensional Ratio (SDR)", "50-500 years"],
@@ -565,12 +537,17 @@ export async function POST(req: NextRequest) {
 </html>`;
 
     return new NextResponse(html, {
-      headers: { "Content-Type": "text/html" },
+      status: 200,
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        // Prevents caching so every download is fresh
+        "Cache-Control": "no-store",
+      },
     });
-  } catch (error) {
-    return NextResponse.json(
-      { error: "Failed to generate PDF" },
-      { status: 500 },
-    );
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : "Failed to generate PDF";
+    console.error("PDF route error:", error);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -101,35 +101,64 @@ export default function ViewReportPage() {
   const handlePDF = async () => {
     setGenerating(true);
     setPdfError("");
+
     try {
+      // Get freshest report data, fall back to local cache
       let data: any = null;
       try {
         const res = await fetch(`/api/reports/${id}`, {
           headers: { "x-user-id": uid! },
         });
         if (res.ok) data = await res.json();
-      } catch {}
+      } catch {
+        /* network error, use cache below */
+      }
 
       if (!data) {
         const local = localStorage.getItem(`report_${id}`);
         data = local ? JSON.parse(local) : { report, defects };
       }
 
+      // Call PDF route
       const res = await fetch("/api/reports/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
 
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `PDF generation failed (${res.status})`);
+      }
+
+      // ✅ KEY FIX: use a Blob URL instead of window.open("", "_blank")
+      // window.open("", "_blank") gets blocked as a popup by browsers.
+      // Blob URL opens in the same tab context — never blocked.
       const html = await res.text();
-      const win = window.open("", "_blank");
-      if (win) {
-        win.document.write(html);
-        win.document.close();
-        setTimeout(() => win.print(), 800);
+      const blob = new Blob([html], { type: "text/html" });
+      const blobUrl = URL.createObjectURL(blob);
+
+      // Open the blob URL in a new tab — this is never blocked
+      const newTab = window.open(blobUrl, "_blank");
+
+      // Clean up the blob URL after the tab has loaded
+      if (newTab) {
+        newTab.addEventListener("load", () => {
+          URL.revokeObjectURL(blobUrl);
+        });
+      } else {
+        // Fallback: if somehow still blocked, trigger a download instead
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = `${report?.title || "inspection-report"}.html`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
       }
     } catch (err: any) {
-      setPdfError(err?.message || "PDF generation failed.");
+      console.error("PDF error:", err);
+      setPdfError(err?.message || "PDF generation failed. Please try again.");
     } finally {
       setGenerating(false);
     }
@@ -440,7 +469,6 @@ export default function ViewReportPage() {
             </div>
           )}
 
-          {/* Piping Section */}
           {(report.cameraDirection1 || report.cameraDirection2) && (
             <div
               style={{

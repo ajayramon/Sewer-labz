@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { adminDb } from "@/app/Lib/firebase-admin";
 
+export const runtime = "nodejs";
+
 export async function POST(req: Request) {
   try {
     const rawBody = await req.text();
@@ -84,8 +86,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
-
-// Required for raw body parsing
-export const config = {
-  api: { bodyParser: false },
-};

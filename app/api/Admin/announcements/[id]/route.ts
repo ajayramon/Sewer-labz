@@ -13,12 +13,12 @@ async function verifyAdmin(req: NextRequest) {
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } },
+  context: { params: Promise<{ id: string }> },
 ) {
   try {
     await verifyAdmin(req);
+    const { id } = await context.params;
     const body = await req.json();
-    const { id } = params;
 
     const allowedFields: Record<string, boolean> = {
       active: true,
@@ -26,6 +26,7 @@ export async function PATCH(
       type: true,
       target: true,
     };
+
     const update: Record<string, any> = {};
     for (const [k, v] of Object.entries(body)) {
       if (allowedFields[k]) update[k] = v;
@@ -46,11 +47,11 @@ export async function PATCH(
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } },
+  context: { params: Promise<{ id: string }> },
 ) {
   try {
     await verifyAdmin(req);
-    const { id } = params;
+    const { id } = await context.params;
     await adminDb.collection("announcements").doc(id).delete();
     return NextResponse.json({ success: true });
   } catch (err: any) {
