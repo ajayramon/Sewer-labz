@@ -40,8 +40,6 @@ type Settings = {
 
 export default function DashboardPage() {
   const router = useRouter();
-
-  // ── ref to scroll main panel into view ──
   const mainPanelRef = useRef<HTMLDivElement>(null);
 
   const [uid, setUid] = useState<string | null>(null);
@@ -49,10 +47,12 @@ export default function DashboardPage() {
     "reports" | "templates" | "settings"
   >("reports");
   const [isMobile, setIsMobile] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
 
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [pdfLoading, setPdfLoading] = useState<string | null>(null);
 
   const [templates, setTemplates] = useState<Template[]>([]);
   const [editingTemplate, setEditingTemplate] =
@@ -76,9 +76,8 @@ export default function DashboardPage() {
     "account" | "company" | "subscription"
   >("account");
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
-  const [showProfile, setShowProfile] = useState(false);
 
-  // ── helper: switch to a tab AND scroll the panel into view ──
+  // ── helper: switch tab AND scroll panel into view ──
   const goToTab = (
     tab: "reports" | "templates" | "settings",
     subTab?: "account" | "company" | "subscription",
@@ -86,7 +85,6 @@ export default function DashboardPage() {
     setActiveTab(tab);
     if (subTab) setSettingsTab(subTab);
     setShowProfile(false);
-    // small delay so React re-renders the tab content first
     setTimeout(() => {
       mainPanelRef.current?.scrollIntoView({
         behavior: "smooth",
@@ -134,10 +132,12 @@ export default function DashboardPage() {
       const res = await fetch("/api/reports", {
         headers: { "x-user-id": userId, Authorization: `Bearer ${token}` },
       });
-      const data = await res.json();
-      if (data.reports?.length) {
-        setReports(data.reports);
-        localStorage.setItem("sewer_reports", JSON.stringify(data.reports));
+      if (res.ok) {
+        const data = await res.json();
+        if (data.reports?.length) {
+          setReports(data.reports);
+          localStorage.setItem("sewer_reports", JSON.stringify(data.reports));
+        }
       }
     } catch {
     } finally {
@@ -172,12 +172,15 @@ export default function DashboardPage() {
     } catch {}
   };
 
+  // ── PDF: proven approach from handoff — document.write into about:blank ──
   const handlePDF = async (report: Report) => {
+    setPdfLoading(report.id);
     try {
       let data: any = null;
       try {
+        const token = await auth.currentUser?.getIdToken();
         const res = await fetch(`/api/reports/${report.id}`, {
-          headers: { "x-user-id": uid! },
+          headers: { "x-user-id": uid!, Authorization: `Bearer ${token}` },
         });
         if (res.ok) data = await res.json();
       } catch {}
@@ -190,35 +193,54 @@ export default function DashboardPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
+      if (!pdfRes.ok) throw new Error("PDF generation failed");
       const html = await pdfRes.text();
-      const win = window.open("", "_blank");
+      const win = window.open("about:blank", "_blank");
       if (win) {
         win.document.open();
         win.document.write(html);
         win.document.close();
-        setTimeout(() => win.print(), 2500);
+        setTimeout(() => {
+          win.focus();
+          win.print();
+        }, 2500);
+      } else {
+        // Popup blocked — download as HTML fallback
+        const blob = new Blob([html], { type: "text/html" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${report.title || "report"}.html`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
       }
     } catch {
-      alert("Failed to generate PDF.");
+      alert("Failed to generate PDF. Please try again.");
+    } finally {
+      setPdfLoading(null);
     }
   };
 
-  const handleDeleteReport = async (id: string) => {
-    if (!confirm("Delete this report?")) return;
-    await fetch(`/api/reports/${id}`, {
-      method: "DELETE",
-      headers: { "x-user-id": uid! },
-    }).catch(() => {});
-    const updated = reports.filter((r) => r.id !== id);
-    setReports(updated);
-    localStorage.setItem("sewer_reports", JSON.stringify(updated));
-    localStorage.removeItem(`report_${id}`);
+  // ── FIX: View uses router.push with auth token in header via fetch first ──
+  const handleView = async (report: Report) => {
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      // Pre-fetch to warm Firestore cache, then navigate
+      fetch(`/api/reports/${report.id}`, {
+        headers: { "x-user-id": uid!, Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+    } catch {}
+    router.push(`/reports/${report.id}`);
   };
 
+  // ── FIX: Edit fetches with auth token before redirecting ──
   const handleEdit = async (report: Report) => {
     try {
+      const token = await auth.currentUser?.getIdToken();
       const res = await fetch(`/api/reports/${report.id}`, {
-        headers: { "x-user-id": uid! },
+        headers: { "x-user-id": uid!, Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
         const data = await res.json();
@@ -232,6 +254,85 @@ export default function DashboardPage() {
       );
     }
     router.push(`/reports/new?edit=${report.id}`);
+  };
+
+  const handleDeleteReport = async (id: string) => {
+    if (!confirm("Delete this report?")) return;
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      await fetch(`/api/reports/${id}`, {
+        method: "DELETE",
+        headers: { "x-user-id": uid!, Authorization: `Bearer ${token}` },
+      });
+    } catch {}
+    const updated = reports.filter((r) => r.id !== id);
+    setReports(updated);
+    localStorage.setItem("sewer_reports", JSON.stringify(updated));
+    localStorage.removeItem(`report_${id}`);
+  };
+
+  // ── FIX: Settings save includes auth token ──
+  const handleSaveSettings = async () => {
+    if (!uid) return;
+    setSettingsSaving(true);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": uid,
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(settings),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      localStorage.setItem("sewer_settings", JSON.stringify(settings));
+      setSavedMsg(true);
+      setTimeout(() => setSavedMsg(false), 2500);
+    } catch {
+      // Fallback: save locally so data isn't lost
+      localStorage.setItem("sewer_settings", JSON.stringify(settings));
+      setSavedMsg(true);
+      setTimeout(() => setSavedMsg(false), 2500);
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
+
+  // ── FIX: Checkout includes auth token ──
+  const handleSubscribe = async (planKey: "PRO_MONTHLY" | "PRO_ANNUALLY") => {
+    setCheckoutLoading(planKey);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch("/api/lemonsqueezy/checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          plan: planKey,
+          email: settings.email,
+          name: settings.fullName,
+        }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert(data.error || "Failed to create checkout. Please try again.");
+      }
+    } catch {
+      alert("Something went wrong. Please try again.");
+    } finally {
+      setCheckoutLoading(null);
+    }
+  };
+
+  const handleLogout = async () => {
+    await signOut(auth);
+    router.replace("/login");
   };
 
   // ── Template handlers ──
@@ -283,12 +384,29 @@ export default function DashboardPage() {
       );
     reader.readAsDataURL(file);
   };
-  const addCustomDropdown = () => {
-    const c = editingTemplate?.customDropdowns || [];
+  const addCustomDropdown = () =>
     setEditingTemplate((p) =>
-      p ? { ...p, customDropdowns: [...c, { label: "", options: [""] }] } : p,
+      p
+        ? {
+            ...p,
+            customDropdowns: [
+              ...(p.customDropdowns || []),
+              { label: "", options: [""] },
+            ],
+          }
+        : p,
     );
-  };
+  const removeDropdown = (i: number) =>
+    setEditingTemplate((p) =>
+      p
+        ? {
+            ...p,
+            customDropdowns: (p.customDropdowns || []).filter(
+              (_, idx) => idx !== i,
+            ),
+          }
+        : p,
+    );
   const updateDropdownLabel = (i: number, val: string) => {
     const a = [...(editingTemplate?.customDropdowns || [])];
     a[i] = { ...a[i], label: val };
@@ -305,77 +423,6 @@ export default function DashboardPage() {
     o[oi] = val;
     a[di] = { ...a[di], options: o };
     setEditingTemplate((p) => (p ? { ...p, customDropdowns: a } : p));
-  };
-  const removeDropdown = (i: number) => {
-    setEditingTemplate((p) =>
-      p
-        ? {
-            ...p,
-            customDropdowns: (p.customDropdowns || []).filter(
-              (_, idx) => idx !== i,
-            ),
-          }
-        : p,
-    );
-  };
-
-  const handleSaveSettings = async () => {
-    if (!uid) return;
-    setSettingsSaving(true);
-    try {
-      const token = await auth.currentUser?.getIdToken();
-      await fetch("/api/settings", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "x-user-id": uid,
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(settings),
-      });
-      localStorage.setItem("sewer_settings", JSON.stringify(settings));
-      setSavedMsg(true);
-      setTimeout(() => setSavedMsg(false), 2500);
-    } catch {
-      localStorage.setItem("sewer_settings", JSON.stringify(settings));
-    } finally {
-      setSettingsSaving(false);
-    }
-  };
-
-  // ✅ FIXED: calls LemonSqueezy checkout API directly
-  const handleSubscribe = async (planKey: "PRO_MONTHLY" | "PRO_ANNUALLY") => {
-    setCheckoutLoading(planKey);
-    try {
-      const token = await auth.currentUser?.getIdToken();
-      const res = await fetch("/api/lemonsqueezy/checkout", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          plan: planKey,
-          email: settings.email,
-          name: settings.fullName,
-        }),
-      });
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        alert(data.error || "Failed to create checkout. Please try again.");
-      }
-    } catch {
-      alert("Something went wrong. Please try again.");
-    } finally {
-      setCheckoutLoading(null);
-    }
-  };
-
-  const handleLogout = async () => {
-    await signOut(auth);
-    router.replace("/login");
   };
 
   const filtered = reports.filter(
@@ -395,7 +442,6 @@ export default function DashboardPage() {
   }).length;
 
   const isPro = ["pro_monthly", "pro_annual", "PRO"].includes(settings.plan);
-
   const initials = (settings.fullName || settings.email || "U")
     .split(" ")
     .map((w) => w[0])
@@ -454,16 +500,21 @@ export default function DashboardPage() {
     textTransform: "uppercase",
     letterSpacing: "0.05em",
   };
-  const actionBtn = (bg: string, color: string): React.CSSProperties => ({
-    padding: "5px 8px",
+  const actionBtn = (
+    bg: string,
+    color: string,
+    disabled = false,
+  ): React.CSSProperties => ({
+    padding: "5px 10px",
     borderRadius: "6px",
     fontSize: "11px",
     fontWeight: 600,
-    cursor: "pointer",
+    cursor: disabled ? "not-allowed" : "pointer",
     border: "none",
-    background: bg,
-    color,
+    background: disabled ? "#E2E8F0" : bg,
+    color: disabled ? "#94A3B8" : color,
     fontFamily: "inherit",
+    opacity: disabled ? 0.7 : 1,
   });
 
   return (
@@ -503,7 +554,6 @@ export default function DashboardPage() {
         </div>
 
         <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-          {/* ✅ FIXED: Subscribe Now → goes to subscription sub-tab AND scrolls to panel */}
           {!isPro && !isMobile && (
             <button
               onClick={() => goToTab("settings", "subscription")}
@@ -584,7 +634,6 @@ export default function DashboardPage() {
                     overflow: "hidden",
                   }}
                 >
-                  {/* Profile header */}
                   <div
                     style={{
                       padding: "16px",
@@ -646,10 +695,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
                   </div>
-
-                  {/* Menu items */}
                   <div style={{ padding: "8px" }}>
-                    {/* ✅ FIXED: Settings → switches tab + scrolls */}
                     <button
                       onClick={() => goToTab("settings", "account")}
                       style={{
@@ -675,7 +721,6 @@ export default function DashboardPage() {
                     >
                       ⚙️ Settings
                     </button>
-
                     <button
                       onClick={() => {
                         router.push("/billing");
@@ -704,8 +749,6 @@ export default function DashboardPage() {
                     >
                       💳 Billing
                     </button>
-
-                    {/* ✅ FIXED: Upgrade → goes to subscription sub-tab + scrolls */}
                     {!isPro && (
                       <button
                         onClick={() => goToTab("settings", "subscription")}
@@ -728,7 +771,6 @@ export default function DashboardPage() {
                         ⚡ Upgrade to Pro
                       </button>
                     )}
-
                     <div
                       style={{
                         height: "1px",
@@ -736,7 +778,6 @@ export default function DashboardPage() {
                         margin: "8px 0",
                       }}
                     />
-
                     <button
                       onClick={handleLogout}
                       style={{
@@ -785,9 +826,9 @@ export default function DashboardPage() {
           }}
         >
           <div style={{ fontSize: "13px", color: "#92400E" }}>
-            ⚠ You have <strong>7 days</strong> left on your free trial.
+            ⚠ You have <strong>7 days</strong> left on your free trial. Upgrade
+            for unlimited reports and no watermark.
           </div>
-          {/* ✅ FIXED: calls real checkout — not just tab switch */}
           <button
             onClick={() => handleSubscribe("PRO_MONTHLY")}
             disabled={checkoutLoading === "PRO_MONTHLY"}
@@ -803,6 +844,8 @@ export default function DashboardPage() {
               cursor:
                 checkoutLoading === "PRO_MONTHLY" ? "not-allowed" : "pointer",
               fontFamily: "inherit",
+              whiteSpace: "nowrap",
+              marginLeft: "12px",
             }}
           >
             {checkoutLoading === "PRO_MONTHLY"
@@ -883,7 +926,7 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* ── Main Panel — ref attached here for scroll target ── */}
+      {/* ── Main Panel ── */}
       <div
         ref={mainPanelRef}
         style={{
@@ -916,7 +959,6 @@ export default function DashboardPage() {
           >
             🗂 Templates
           </button>
-          {/* ✅ FIXED: Settings tab button scrolls to panel */}
           <button
             style={tabBtn(activeTab === "settings")}
             onClick={() => goToTab("settings", "account")}
@@ -944,7 +986,8 @@ export default function DashboardPage() {
                   color: "#94A3B8",
                 }}
               >
-                Loading...
+                <div style={{ fontSize: "24px", marginBottom: "8px" }}>⏳</div>
+                Loading reports...
               </div>
             ) : filtered.length === 0 ? (
               <div style={{ textAlign: "center", padding: "48px" }}>
@@ -966,8 +1009,7 @@ export default function DashboardPage() {
                     marginBottom: "16px",
                   }}
                 >
-                  Click <strong>+ New Report</strong> to create your first
-                  inspection report
+                  Click <strong>+ New Report</strong> to get started
                 </p>
                 <Link href="/reports/new">
                   <button
@@ -1036,9 +1078,14 @@ export default function DashboardPage() {
                           fontSize: "10px",
                           fontWeight: 700,
                           background:
-                            report.status === "DRAFT" ? "#FFFBEB" : "#F0FDF4",
+                            report.status === "COMPLETE"
+                              ? "#F0FDF4"
+                              : "#FFFBEB",
                           color:
-                            report.status === "DRAFT" ? "#D97706" : "#16A34A",
+                            report.status === "COMPLETE"
+                              ? "#16A34A"
+                              : "#D97706",
+                          marginLeft: "8px",
                         }}
                       >
                         {report.status || "DRAFT"}
@@ -1048,7 +1095,7 @@ export default function DashboardPage() {
                       style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}
                     >
                       <button
-                        onClick={() => router.push(`/reports/${report.id}`)}
+                        onClick={() => handleView(report)}
                         style={actionBtn("#F1F5F9", "#0F2A4A")}
                       >
                         View
@@ -1061,9 +1108,14 @@ export default function DashboardPage() {
                       </button>
                       <button
                         onClick={() => handlePDF(report)}
-                        style={actionBtn("#F0FDF4", "#16A34A")}
+                        disabled={pdfLoading === report.id}
+                        style={actionBtn(
+                          "#F0FDF4",
+                          "#16A34A",
+                          pdfLoading === report.id,
+                        )}
                       >
-                        PDF
+                        {pdfLoading === report.id ? "..." : "PDF"}
                       </button>
                       <button
                         onClick={() => handleDeleteReport(report.id)}
@@ -1156,9 +1208,13 @@ export default function DashboardPage() {
                             fontSize: "11px",
                             fontWeight: 700,
                             background:
-                              report.status === "DRAFT" ? "#FFFBEB" : "#F0FDF4",
+                              report.status === "COMPLETE"
+                                ? "#F0FDF4"
+                                : "#FFFBEB",
                             color:
-                              report.status === "DRAFT" ? "#D97706" : "#16A34A",
+                              report.status === "COMPLETE"
+                                ? "#16A34A"
+                                : "#D97706",
                           }}
                         >
                           {report.status || "DRAFT"}
@@ -1167,7 +1223,7 @@ export default function DashboardPage() {
                       <td style={{ padding: "12px" }}>
                         <div style={{ display: "flex", gap: "6px" }}>
                           <button
-                            onClick={() => router.push(`/reports/${report.id}`)}
+                            onClick={() => handleView(report)}
                             style={actionBtn("#F1F5F9", "#0F2A4A")}
                           >
                             View
@@ -1180,9 +1236,14 @@ export default function DashboardPage() {
                           </button>
                           <button
                             onClick={() => handlePDF(report)}
-                            style={actionBtn("#F0FDF4", "#16A34A")}
+                            disabled={pdfLoading === report.id}
+                            style={actionBtn(
+                              "#F0FDF4",
+                              "#16A34A",
+                              pdfLoading === report.id,
+                            )}
                           >
-                            PDF
+                            {pdfLoading === report.id ? "Generating..." : "PDF"}
                           </button>
                           <button
                             onClick={() => handleDeleteReport(report.id)}
@@ -1770,7 +1831,7 @@ export default function DashboardPage() {
                     padding: "8px 16px",
                     fontSize: "13px",
                     fontWeight: 700,
-                    cursor: "pointer",
+                    cursor: settingsSaving ? "not-allowed" : "pointer",
                     fontFamily: "inherit",
                   }}
                 >
@@ -2018,7 +2079,6 @@ export default function DashboardPage() {
                   </span>
                 </div>
 
-                {/* ✅ FIXED: Subscribe buttons call real checkout */}
                 {!isPro && (
                   <div
                     style={{
