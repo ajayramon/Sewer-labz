@@ -149,7 +149,7 @@ export async function POST(req: NextRequest) {
   }
 </style>
 </head>
-<body onload="window.print()">
+<body>
 
 <!-- COVER PAGE -->
 <div class="cover">
@@ -195,21 +195,8 @@ export async function POST(req: NextRequest) {
       <span>Inspection Report Exclusively For: ${report.fileNumber || report.clientName || ""}</span>
     </div>
     <div class="section-title">Table of Contents</div>
-    ${[
-      "Cover Page",
-      "Table of Contents",
-      "Sewer Inspection Disclosure",
-      "Scope of the Sewer Inspection",
-      "Point of Reference",
-      "Client & Site Information",
-      "Sewer System Information",
-      "Sewer Pipe Conditions",
-      "End of Report",
-      "Statement of Service",
-      "Understanding Sewer Material & Defects",
-    ]
-      .map((item) => `<div class="toc-item">${item}</div>`)
-      .join("")}
+    ${["Cover Page","Table of Contents","Sewer Inspection Disclosure","Scope of the Sewer Inspection","Point of Reference","Client & Site Information","Sewer System Information","Sewer Pipe Conditions","End of Report","Statement of Service","Understanding Sewer Material & Defects"]
+      .map(item => `<div class="toc-item">${item}</div>`).join("")}
   </div>
   <div class="report-footer">
     This report was prepared for the client listed above in accordance with our inspection agreement.<br>
@@ -260,93 +247,55 @@ export async function POST(req: NextRequest) {
           ["Location", report.location],
           ["Date", report.inspectedAt],
           ["Time", report.inspectionTime],
-          [
-            "People Present",
-            Array.isArray(report.peoplePresent)
-              ? report.peoplePresent.join(", ")
-              : report.peoplePresent,
-          ],
+          ["People Present", Array.isArray(report.peoplePresent) ? report.peoplePresent.join(", ") : report.peoplePresent],
           ["Buyer's Agent", report.buyersAgent],
           ["Building Occupied", report.buildingOccupied],
           ["Weather/Soil", report.weather],
-        ]
-          .filter(([, v]) => v)
-          .map(
-            ([label, value]) => `
+        ].filter(([, v]) => v)
+          .map(([label, value]) => `
             <div class="info-row">
               <span class="info-label">${label}</span>
               <span class="info-value">${value}</span>
-            </div>`,
-          )
-          .join("")}
+            </div>`).join("")}
       </div>
-      ${
-        report.propertyPhotos && report.propertyPhotos.length > 0
-          ? `<div class="client-photos">
-             ${report.propertyPhotos
-               .slice(0, 2)
-               .map(
-                 (p: string) =>
-                   `<img src="${p}" class="client-photo" alt="Property" />`,
-               )
-               .join("")}
+      ${report.propertyPhotos && report.propertyPhotos.length > 0
+        ? `<div class="client-photos">
+             ${report.propertyPhotos.slice(0, 2).map((p: string) => `<img src="${p}" class="client-photo" alt="Property" />`).join("")}
            </div>`
-          : ""
-      }
+        : ""}
     </div>
 
     <div class="section-subtitle" style="margin-top:16px;">Sewer System Information</div>
 
-    ${
-      report.cameraDirection1 || report.cameraDirection2
-        ? `
+    ${report.cameraDirection1 || report.cameraDirection2 ? `
       <div class="piping-box">
         <strong>PIPING</strong><br>
         The camera went in the following direction(s):<br>
         ${report.cameraDirection1 ? `1st Direction: ${report.cameraDirection1}` : ""}
         ${report.cameraDirection2 ? `<br>2nd Direction: ${report.cameraDirection2}` : ""}
         ${report.pipingNotes ? `<br>${report.pipingNotes}` : ""}
-      </div>`
-        : ""
-    }
+      </div>` : ""}
 
-    ${
-      report.cleanoutLocation
-        ? `
+    ${report.cleanoutLocation ? `
       <div class="system-row">
         <div class="system-label">Location of Camera Entry</div>
         <div class="system-value">${report.cleanoutLocation}</div>
-      </div>`
-        : ""
-    }
+      </div>` : ""}
 
-    ${
-      report.pipeMaterials && report.pipeMaterials.length > 0
-        ? `
+    ${report.pipeMaterials && report.pipeMaterials.length > 0 ? `
       <div class="system-row">
         <div class="system-label">Sewer Pipe Materials</div>
         <div class="system-value">${report.pipeMaterials.join(", ")}</div>
-      </div>`
-        : ""
-    }
+      </div>` : ""}
 
-    ${
-      report.videoLinks && report.videoLinks.filter((l: string) => l).length > 0
-        ? `
+    ${report.videoLinks && report.videoLinks.filter((l: string) => l).length > 0 ? `
       <div class="system-row">
         <div class="system-label">Sewer Video Link(s)</div>
         <div class="system-value">
-          ${report.videoLinks
-            .filter((l: string) => l)
-            .map(
-              (link: string, i: number) => `
-            <div style="margin-bottom:4px;">Link ${i + 1}: <a href="${link}" style="color:#0066cc;">${link}</a></div>`,
-            )
-            .join("")}
+          ${report.videoLinks.filter((l: string) => l).map((link: string, i: number) => `
+            <div style="margin-bottom:4px;">Link ${i + 1}: <a href="${link}" style="color:#0066cc;">${link}</a></div>`).join("")}
         </div>
-      </div>`
-        : ""
-    }
+      </div>` : ""}
   </div>
   <div class="report-footer">
     This report was prepared for the client listed above in accordance with our inspection agreement.<br>
@@ -363,48 +312,29 @@ export async function POST(req: NextRequest) {
     </div>
     <div class="section-subtitle">Sewer Piping Conditions</div>
 
-    ${
-      !defects || defects.length === 0
-        ? '<p style="color:#999;font-size:13px;margin-top:12px;">No conditions recorded.</p>'
-        : defects
-            .map(
-              (d: any) => `
+    ${!defects || defects.length === 0
+      ? '<p style="color:#999;font-size:13px;margin-top:12px;">No conditions recorded.</p>'
+      : defects.map((d: any) => `
         <div class="defect-item">
           <p class="defect-desc">
             <strong>-@ ${d.videoTimeH || "--"}:${d.videoTimeM || "--"} / ${d.footageStart || "0"} ft approx. in video the following condition was observed.</strong>
-            ${
-              d.conditionType && d.conditionType !== "Select Condition Type"
-                ? `<strong> ${d.conditionType}${
-                    d.severity === "Major"
-                      ? "; Major defect."
-                      : d.severity === "Moderate"
-                        ? "; moderate."
-                        : d.severity === "Minor"
-                          ? "; minor."
-                          : d.severity === "Suggested Maintenance"
-                            ? "; suggested maintenance."
-                            : "."
-                  }</strong>`
-                : ""
-            }
+            ${d.conditionType && d.conditionType !== "Select Condition Type"
+              ? `<strong> ${d.conditionType}${
+                  d.severity === "Major" ? "; Major defect."
+                  : d.severity === "Moderate" ? "; moderate."
+                  : d.severity === "Minor" ? "; minor."
+                  : d.severity === "Suggested Maintenance" ? "; suggested maintenance."
+                  : "."}</strong>`
+              : ""}
             ${d.narrative ? ` ${d.narrative}` : ""}
           </p>
-          ${
-            d.images && d.images.length > 0
-              ? `<div class="defect-photos">
-                 ${d.images
-                   .map(
-                     (img: any) => `
-                   <div><img src="${img.url}" class="defect-photo" alt="Inspection photo" /></div>`,
-                   )
-                   .join("")}
+          ${d.images && d.images.length > 0
+            ? `<div class="defect-photos">
+                 ${d.images.map((img: any) => `
+                   <div><img src="${img.url}" class="defect-photo" alt="Inspection photo" /></div>`).join("")}
                </div>`
-              : ""
-          }
-        </div>`,
-            )
-            .join("")
-    }
+            : ""}
+        </div>`).join("")}
   </div>
   <div class="report-footer">
     This report was prepared for the client listed above in accordance with our inspection agreement.<br>
@@ -424,41 +354,27 @@ export async function POST(req: NextRequest) {
     </div>
     ${report.notes ? `<p style="font-size:13px;line-height:1.8;margin-bottom:16px;">${report.notes}</p>` : ""}
 
-    ${
-      report.corrections &&
-      Object.entries(report.corrections).some(([, v]) => v && v !== "N/A")
-        ? `
+    ${report.corrections && Object.entries(report.corrections).some(([, v]) => v && v !== "N/A") ? `
       <div style="font-size:15px;font-weight:700;border-bottom:1px solid #000;padding-bottom:4px;margin-bottom:12px;margin-top:20px;">
         Corrective Action Recommendations
       </div>
-      ${Object.entries(report.corrections)
-        .filter(([, v]) => v && v !== "N/A")
-        .map(
-          ([label, value]) => `
+      ${Object.entries(report.corrections).filter(([, v]) => v && v !== "N/A")
+        .map(([label, value]) => `
           <div class="correction-row">
             <span class="correction-label">${label}</span>
             <span class="correction-value">${value}</span>
-          </div>`,
-        )
-        .join("")}`
-        : ""
-    }
+          </div>`).join("")}` : ""}
 
     ${report.correctionNotes ? `<p style="font-size:13px;line-height:1.8;margin-top:12px;">${report.correctionNotes}</p>` : ""}
 
     <div style="font-size:15px;font-weight:700;border-bottom:1px solid #000;padding-bottom:4px;margin-bottom:12px;margin-top:24px;">
       End of Report — Recommendations
     </div>
-    ${
-      report.endOfReport &&
-      Object.values(report.endOfReport).some((v) => v && v !== "Select...")
-        ? Object.entries(report.endOfReport)
-            .filter(([, v]) => v && v !== "Select...")
-            .map(([, value]) => `<div class="end-statement">${value}</div>`)
-            .join("")
-        : `<div class="end-statement">Given the condition(s) above we recommend full evaluations and/or corrections with written findings and costs to cure by a competent licensed plumbing contractor before the end/close of the inspection contingency period.</div>
-         <div class="end-statement">Recommend sewer inspections after repairs are made to ensure efficacy of work and to inspect any areas of the sewer lateral not visible due to defect(s).</div>`
-    }
+    ${report.endOfReport && Object.values(report.endOfReport).some((v) => v && v !== "Select...")
+      ? Object.entries(report.endOfReport).filter(([, v]) => v && v !== "Select...")
+          .map(([, value]) => `<div class="end-statement">${value}</div>`).join("")
+      : `<div class="end-statement">Given the condition(s) above we recommend full evaluations and/or corrections with written findings and costs to cure by a competent licensed plumbing contractor before the end/close of the inspection contingency period.</div>
+         <div class="end-statement">Recommend sewer inspections after repairs are made to ensure efficacy of work and to inspect any areas of the sewer lateral not visible due to defect(s).</div>`}
   </div>
   <div class="report-footer">
     This report was prepared for the client listed above in accordance with our inspection agreement.<br>
@@ -514,12 +430,7 @@ export async function POST(req: NextRequest) {
           ["Lead", "100+ years"],
           ["Copper", "50+ years"],
           ["Stainless Steel", "50+ years"],
-        ]
-          .map(
-            ([type, life]) =>
-              `<tr><td>${type}</td><td><strong>${life}</strong></td></tr>`,
-          )
-          .join("")}
+        ].map(([type, life]) => `<tr><td>${type}</td><td><strong>${life}</strong></td></tr>`).join("")}
       </tbody>
     </table>
     <p style="font-size:11px;color:#555;margin-top:14px;line-height:1.7;">
@@ -544,9 +455,9 @@ export async function POST(req: NextRequest) {
         "Cache-Control": "no-store",
       },
     });
+
   } catch (error: unknown) {
-    const message =
-      error instanceof Error ? error.message : "Failed to generate PDF";
+    const message = error instanceof Error ? error.message : "Failed to generate PDF";
     console.error("PDF route error:", error);
     return NextResponse.json({ error: message }, { status: 500 });
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { onAuthStateChanged, signOut } from "firebase/auth";
@@ -16,7 +16,6 @@ type Report = {
   createdAt: string;
   fileNumber: string;
 };
-
 type Template = {
   id: string;
   name: string;
@@ -28,7 +27,6 @@ type Template = {
   showSuggestedMaintenance: boolean;
   customDropdowns: { label: string; options: string[] }[];
 };
-
 type Settings = {
   fullName: string;
   email: string;
@@ -42,12 +40,15 @@ type Settings = {
 
 export default function DashboardPage() {
   const router = useRouter();
+
+  // ── ref to scroll main panel into view ──
+  const mainPanelRef = useRef<HTMLDivElement>(null);
+
   const [uid, setUid] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"reports" | "templates">(
-    "reports",
-  );
+  const [activeTab, setActiveTab] = useState<
+    "reports" | "templates" | "settings"
+  >("reports");
   const [isMobile, setIsMobile] = useState(false);
-  const [showProfile, setShowProfile] = useState(false);
 
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,8 +70,30 @@ export default function DashboardPage() {
     licenseNumber: "",
     plan: "free",
   });
+  const [settingsSaved, setSavedMsg] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<
+    "account" | "company" | "subscription"
+  >("account");
+  const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+  const [showProfile, setShowProfile] = useState(false);
 
-  // ── Mobile detection ──────────────────────────────────────────────────────
+  // ── helper: switch to a tab AND scroll the panel into view ──
+  const goToTab = (
+    tab: "reports" | "templates" | "settings",
+    subTab?: "account" | "company" | "subscription",
+  ) => {
+    setActiveTab(tab);
+    if (subTab) setSettingsTab(subTab);
+    setShowProfile(false);
+    // small delay so React re-renders the tab content first
+    setTimeout(() => {
+      mainPanelRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 80);
+  };
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -78,8 +101,6 @@ export default function DashboardPage() {
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
   }, []);
-
-  // ── Auth ──────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -103,8 +124,6 @@ export default function DashboardPage() {
     loadSettings(uid);
     loadTemplates();
   }, [uid]);
-
-  // ── Data loaders ──────────────────────────────────────────────────────────
 
   const loadReports = async (userId: string) => {
     setLoading(true);
@@ -153,9 +172,6 @@ export default function DashboardPage() {
     } catch {}
   };
 
-  // ── Report actions ────────────────────────────────────────────────────────
-
-  // ✅ FIXED: Blob URL — never blocked by popup blocker
   const handlePDF = async (report: Report) => {
     try {
       let data: any = null;
@@ -165,38 +181,25 @@ export default function DashboardPage() {
         });
         if (res.ok) data = await res.json();
       } catch {}
-
       if (!data) {
         const local = localStorage.getItem(`report_${report.id}`);
         data = local ? JSON.parse(local) : { report, defects: [] };
       }
-
       const pdfRes = await fetch("/api/reports/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-
-      if (!pdfRes.ok) throw new Error("PDF failed");
-
       const html = await pdfRes.text();
-      const blob = new Blob([html], { type: "text/html" });
-      const blobUrl = URL.createObjectURL(blob);
-      const newTab = window.open(blobUrl, "_blank");
-      if (newTab) {
-        newTab.addEventListener("load", () => URL.revokeObjectURL(blobUrl));
-      } else {
-        // Fallback: download as file if tab still blocked
-        const a = document.createElement("a");
-        a.href = blobUrl;
-        a.download = `${report.title || "report"}.html`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+      const win = window.open("", "_blank");
+      if (win) {
+        win.document.open();
+        win.document.write(html);
+        win.document.close();
+        setTimeout(() => win.print(), 2500);
       }
     } catch {
-      alert("Failed to generate PDF. Please try again.");
+      alert("Failed to generate PDF.");
     }
   };
 
@@ -231,8 +234,7 @@ export default function DashboardPage() {
     router.push(`/reports/new?edit=${report.id}`);
   };
 
-  // ── Template handlers ─────────────────────────────────────────────────────
-
+  // ── Template handlers ──
   const handleNewTemplate = () => {
     setEditingTemplate({
       name: "",
@@ -247,7 +249,6 @@ export default function DashboardPage() {
     });
     setIsNewTemplate(true);
   };
-
   const handleSaveTemplate = () => {
     if (!editingTemplate?.name?.trim()) {
       alert("Template name is required");
@@ -266,14 +267,12 @@ export default function DashboardPage() {
     setEditingTemplate(null);
     setSavingTemplate(false);
   };
-
   const handleDeleteTemplate = (id: string) => {
     if (!confirm("Delete this template?")) return;
     const updated = templates.filter((t) => t.id !== id);
     setTemplates(updated);
     localStorage.setItem("sewer_templates", JSON.stringify(updated));
   };
-
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -284,7 +283,6 @@ export default function DashboardPage() {
       );
     reader.readAsDataURL(file);
   };
-
   const addCustomDropdown = () => {
     const c = editingTemplate?.customDropdowns || [];
     setEditingTemplate((p) =>
@@ -321,12 +319,64 @@ export default function DashboardPage() {
     );
   };
 
+  const handleSaveSettings = async () => {
+    if (!uid) return;
+    setSettingsSaving(true);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": uid,
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(settings),
+      });
+      localStorage.setItem("sewer_settings", JSON.stringify(settings));
+      setSavedMsg(true);
+      setTimeout(() => setSavedMsg(false), 2500);
+    } catch {
+      localStorage.setItem("sewer_settings", JSON.stringify(settings));
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
+
+  // ✅ FIXED: calls LemonSqueezy checkout API directly
+  const handleSubscribe = async (planKey: "PRO_MONTHLY" | "PRO_ANNUALLY") => {
+    setCheckoutLoading(planKey);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch("/api/lemonsqueezy/checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          plan: planKey,
+          email: settings.email,
+          name: settings.fullName,
+        }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert(data.error || "Failed to create checkout. Please try again.");
+      }
+    } catch {
+      alert("Something went wrong. Please try again.");
+    } finally {
+      setCheckoutLoading(null);
+    }
+  };
+
   const handleLogout = async () => {
     await signOut(auth);
     router.replace("/login");
   };
-
-  // ── Derived state ─────────────────────────────────────────────────────────
 
   const filtered = reports.filter(
     (r) =>
@@ -353,8 +403,7 @@ export default function DashboardPage() {
     .join("")
     .toUpperCase();
 
-  // ── Styles ────────────────────────────────────────────────────────────────
-
+  // ── Styles ──
   const tabBtn = (a: boolean): React.CSSProperties => ({
     padding: isMobile ? "8px 12px" : "8px 20px",
     borderRadius: "6px",
@@ -366,14 +415,23 @@ export default function DashboardPage() {
     color: a ? "#fff" : "#64748B",
     fontFamily: "inherit",
   });
-
+  const subTabBtn = (a: boolean): React.CSSProperties => ({
+    padding: "6px 12px",
+    borderRadius: "6px",
+    fontSize: "12px",
+    fontWeight: 600,
+    cursor: "pointer",
+    border: "none",
+    background: a ? "#0F2A4A" : "#F1F5F9",
+    color: a ? "#fff" : "#64748B",
+    fontFamily: "inherit",
+  });
   const card: React.CSSProperties = {
     background: "#fff",
     border: "1px solid #E2E8F0",
     borderRadius: "12px",
     padding: isMobile ? "14px" : "20px",
   };
-
   const inp: React.CSSProperties = {
     width: "100%",
     height: "36px",
@@ -387,7 +445,6 @@ export default function DashboardPage() {
     color: "#0F172A",
     fontFamily: "inherit",
   };
-
   const lbl: React.CSSProperties = {
     display: "block",
     fontSize: "11px",
@@ -397,9 +454,8 @@ export default function DashboardPage() {
     textTransform: "uppercase",
     letterSpacing: "0.05em",
   };
-
   const actionBtn = (bg: string, color: string): React.CSSProperties => ({
-    padding: "5px 10px",
+    padding: "5px 8px",
     borderRadius: "6px",
     fontSize: "11px",
     fontWeight: 600,
@@ -409,8 +465,6 @@ export default function DashboardPage() {
     color,
     fontFamily: "inherit",
   });
-
-  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div
@@ -449,10 +503,10 @@ export default function DashboardPage() {
         </div>
 
         <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-          {/* ✅ Subscribe Now → /billing */}
+          {/* ✅ FIXED: Subscribe Now → goes to subscription sub-tab AND scrolls to panel */}
           {!isPro && !isMobile && (
             <button
-              onClick={() => router.push("/billing")}
+              onClick={() => goToTab("settings", "subscription")}
               style={{
                 padding: "8px 14px",
                 borderRadius: "8px",
@@ -487,7 +541,7 @@ export default function DashboardPage() {
             </button>
           </Link>
 
-          {/* Profile avatar */}
+          {/* ── Profile Avatar ── */}
           <div style={{ position: "relative" }}>
             <button
               onClick={() => setShowProfile(!showProfile)}
@@ -595,12 +649,9 @@ export default function DashboardPage() {
 
                   {/* Menu items */}
                   <div style={{ padding: "8px" }}>
-                    {/* ✅ Settings → /settings page */}
+                    {/* ✅ FIXED: Settings → switches tab + scrolls */}
                     <button
-                      onClick={() => {
-                        router.push("/settings");
-                        setShowProfile(false);
-                      }}
+                      onClick={() => goToTab("settings", "account")}
                       style={{
                         display: "block",
                         width: "100%",
@@ -625,7 +676,6 @@ export default function DashboardPage() {
                       ⚙️ Settings
                     </button>
 
-                    {/* ✅ Billing → /billing page */}
                     <button
                       onClick={() => {
                         router.push("/billing");
@@ -655,13 +705,10 @@ export default function DashboardPage() {
                       💳 Billing
                     </button>
 
-                    {/* ✅ Upgrade → /billing */}
+                    {/* ✅ FIXED: Upgrade → goes to subscription sub-tab + scrolls */}
                     {!isPro && (
                       <button
-                        onClick={() => {
-                          router.push("/billing");
-                          setShowProfile(false);
-                        }}
+                        onClick={() => goToTab("settings", "subscription")}
                         style={{
                           display: "block",
                           width: "100%",
@@ -738,26 +785,29 @@ export default function DashboardPage() {
           }}
         >
           <div style={{ fontSize: "13px", color: "#92400E" }}>
-            ⚠ Upgrade to Pro for unlimited reports and all features.
+            ⚠ You have <strong>7 days</strong> left on your free trial.
           </div>
-          {/* ✅ FIXED: goes to /billing */}
+          {/* ✅ FIXED: calls real checkout — not just tab switch */}
           <button
-            onClick={() => router.push("/billing")}
+            onClick={() => handleSubscribe("PRO_MONTHLY")}
+            disabled={checkoutLoading === "PRO_MONTHLY"}
             style={{
               padding: "7px 16px",
               borderRadius: "7px",
               border: "none",
-              background: "#2D8C4E",
+              background:
+                checkoutLoading === "PRO_MONTHLY" ? "#94A3B8" : "#2D8C4E",
               color: "#fff",
               fontSize: "12px",
               fontWeight: 700,
-              cursor: "pointer",
+              cursor:
+                checkoutLoading === "PRO_MONTHLY" ? "not-allowed" : "pointer",
               fontFamily: "inherit",
-              whiteSpace: "nowrap",
-              marginLeft: "12px",
             }}
           >
-            Subscribe Now
+            {checkoutLoading === "PRO_MONTHLY"
+              ? "Redirecting..."
+              : "Subscribe Now"}
           </button>
         </div>
       )}
@@ -779,7 +829,7 @@ export default function DashboardPage() {
             icon: "📄",
           },
           {
-            label: "This Month",
+            label: "Completed This Month",
             value: thisMonth,
             color: "#2D8C4E",
             icon: "✅",
@@ -791,7 +841,7 @@ export default function DashboardPage() {
             icon: "✏️",
           },
           {
-            label: "Templates",
+            label: "Templates Used",
             value: templates.length,
             color: "#2563EB",
             icon: "🗂",
@@ -833,8 +883,9 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* ── Main Panel ── */}
+      {/* ── Main Panel — ref attached here for scroll target ── */}
       <div
+        ref={mainPanelRef}
         style={{
           background: "#fff",
           border: "1px solid #E2E8F0",
@@ -842,7 +893,7 @@ export default function DashboardPage() {
           overflow: "hidden",
         }}
       >
-        {/* Tabs */}
+        {/* Tab bar */}
         <div
           style={{
             display: "flex",
@@ -865,10 +916,10 @@ export default function DashboardPage() {
           >
             🗂 Templates
           </button>
-          {/* ✅ FIXED: Settings tab → navigates to /settings page */}
+          {/* ✅ FIXED: Settings tab button scrolls to panel */}
           <button
-            style={tabBtn(false)}
-            onClick={() => router.push("/settings")}
+            style={tabBtn(activeTab === "settings")}
+            onClick={() => goToTab("settings", "account")}
           >
             ⚙️ Settings
           </button>
@@ -1208,7 +1259,6 @@ export default function DashboardPage() {
                     </button>
                   </div>
                 </div>
-
                 <div style={{ marginBottom: "14px" }}>
                   <label style={lbl}>Template Name *</label>
                   <input
@@ -1222,7 +1272,6 @@ export default function DashboardPage() {
                     style={inp}
                   />
                 </div>
-
                 {[
                   {
                     title: "Company Branding",
@@ -1372,7 +1421,6 @@ export default function DashboardPage() {
                     {children}
                   </div>
                 ))}
-
                 <div
                   style={{
                     padding: "14px",
@@ -1540,7 +1588,6 @@ export default function DashboardPage() {
                     + New
                   </button>
                 </div>
-
                 {templates.length === 0 ? (
                   <div
                     style={{
@@ -1670,6 +1717,462 @@ export default function DashboardPage() {
                         </div>
                       </div>
                     ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── SETTINGS TAB ── */}
+        {activeTab === "settings" && (
+          <div style={{ padding: isMobile ? "12px" : "20px" }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "20px",
+              }}
+            >
+              <h3
+                style={{
+                  fontSize: "15px",
+                  fontWeight: 700,
+                  color: "#0F2A4A",
+                  margin: 0,
+                }}
+              >
+                Account Settings
+              </h3>
+              <div
+                style={{ display: "flex", gap: "10px", alignItems: "center" }}
+              >
+                {settingsSaved && (
+                  <span
+                    style={{
+                      fontSize: "13px",
+                      color: "#16A34A",
+                      fontWeight: 600,
+                    }}
+                  >
+                    ✓ Saved
+                  </span>
+                )}
+                <button
+                  onClick={handleSaveSettings}
+                  disabled={settingsSaving}
+                  style={{
+                    background: settingsSaving ? "#94A3B8" : "#2D8C4E",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: "8px",
+                    padding: "8px 16px",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {settingsSaving ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: "6px",
+                marginBottom: "20px",
+                overflowX: "auto",
+              }}
+            >
+              <button
+                style={subTabBtn(settingsTab === "account")}
+                onClick={() => setSettingsTab("account")}
+              >
+                👤 Account
+              </button>
+              <button
+                style={subTabBtn(settingsTab === "company")}
+                onClick={() => setSettingsTab("company")}
+              >
+                🏢 Company
+              </button>
+              <button
+                style={subTabBtn(settingsTab === "subscription")}
+                onClick={() => setSettingsTab("subscription")}
+              >
+                💳 Subscription
+              </button>
+            </div>
+
+            {settingsTab === "account" && (
+              <div
+                style={{
+                  padding: "16px",
+                  border: "1px solid #E2E8F0",
+                  borderRadius: "10px",
+                  marginBottom: "16px",
+                }}
+              >
+                <h4
+                  style={{
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    color: "#0F2A4A",
+                    margin: "0 0 14px",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Account Information
+                </h4>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+                    gap: "14px",
+                  }}
+                >
+                  {[
+                    {
+                      label: "Full Name",
+                      key: "fullName",
+                      placeholder: "Your full name",
+                      disabled: false,
+                    },
+                    {
+                      label: "Email Address",
+                      key: "email",
+                      placeholder: "you@example.com",
+                      disabled: true,
+                    },
+                    {
+                      label: "License Number",
+                      key: "licenseNumber",
+                      placeholder: "LIC-123456",
+                      disabled: false,
+                    },
+                  ].map(({ label, key, placeholder, disabled }) => (
+                    <div key={key}>
+                      <label style={lbl}>{label}</label>
+                      <input
+                        value={(settings as any)[key]}
+                        disabled={disabled}
+                        onChange={(e) =>
+                          setSettings((p) => ({ ...p, [key]: e.target.value }))
+                        }
+                        placeholder={placeholder}
+                        style={{
+                          ...inp,
+                          color: disabled ? "#94A3B8" : "#0F172A",
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div
+                  style={{
+                    marginTop: "16px",
+                    paddingTop: "16px",
+                    borderTop: "1px solid #E2E8F0",
+                  }}
+                >
+                  <button
+                    onClick={handleLogout}
+                    style={{
+                      padding: "8px 18px",
+                      borderRadius: "6px",
+                      border: "none",
+                      background: "#FEF2F2",
+                      color: "#DC2626",
+                      fontSize: "13px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    Sign Out
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {settingsTab === "company" && (
+              <div
+                style={{
+                  padding: "16px",
+                  border: "1px solid #E2E8F0",
+                  borderRadius: "10px",
+                  marginBottom: "16px",
+                }}
+              >
+                <h4
+                  style={{
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    color: "#0F2A4A",
+                    margin: "0 0 14px",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Company Information
+                </h4>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+                    gap: "14px",
+                  }}
+                >
+                  {[
+                    {
+                      label: "Company Name",
+                      key: "companyName",
+                      placeholder: "Sewer Labz",
+                    },
+                    {
+                      label: "Phone Number",
+                      key: "companyPhone",
+                      placeholder: "(702) 000-0000",
+                    },
+                    {
+                      label: "Website",
+                      key: "companyWebsite",
+                      placeholder: "https://sewerlabz.com",
+                    },
+                  ].map(({ label, key, placeholder }) => (
+                    <div key={key}>
+                      <label style={lbl}>{label}</label>
+                      <input
+                        value={(settings as any)[key]}
+                        onChange={(e) =>
+                          setSettings((p) => ({ ...p, [key]: e.target.value }))
+                        }
+                        placeholder={placeholder}
+                        style={inp}
+                      />
+                    </div>
+                  ))}
+                  <div style={{ gridColumn: isMobile ? "1" : "1 / -1" }}>
+                    <label style={lbl}>Company Address</label>
+                    <input
+                      value={settings.companyAddress}
+                      onChange={(e) =>
+                        setSettings((p) => ({
+                          ...p,
+                          companyAddress: e.target.value,
+                        }))
+                      }
+                      placeholder="123 Main St, Las Vegas NV 89101"
+                      style={inp}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {settingsTab === "subscription" && (
+              <div
+                style={{
+                  padding: "16px",
+                  border: "1px solid #E2E8F0",
+                  borderRadius: "10px",
+                }}
+              >
+                <h4
+                  style={{
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    color: "#0F2A4A",
+                    margin: "0 0 14px",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Subscription
+                </h4>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "12px",
+                    marginBottom: "20px",
+                  }}
+                >
+                  <span
+                    style={{
+                      padding: "4px 14px",
+                      borderRadius: "20px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      background: isPro ? "#E8F5EE" : "#F1F5F9",
+                      color: isPro ? "#2D8C4E" : "#64748B",
+                    }}
+                  >
+                    {isPro ? "PRO PLAN" : "FREE PLAN"}
+                  </span>
+                  <span style={{ fontSize: "13px", color: "#64748B" }}>
+                    {isPro
+                      ? "Unlimited reports · All features"
+                      : "5 reports/month"}
+                  </span>
+                </div>
+
+                {/* ✅ FIXED: Subscribe buttons call real checkout */}
+                {!isPro && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+                      gap: "12px",
+                    }}
+                  >
+                    {[
+                      {
+                        key: "PRO_MONTHLY" as const,
+                        name: "Pro Monthly",
+                        price: "$49",
+                        period: "/mo",
+                        features: [
+                          "Unlimited reports",
+                          "Custom templates",
+                          "No watermark",
+                        ],
+                        color: "#2D8C4E",
+                      },
+                      {
+                        key: "PRO_ANNUALLY" as const,
+                        name: "Pro Annual",
+                        price: "$499.95",
+                        period: "/yr",
+                        badge: "Save 15%",
+                        features: [
+                          "Unlimited reports",
+                          "Custom templates",
+                          "No watermark",
+                        ],
+                        color: "#0F2A4A",
+                      },
+                    ].map((p) => (
+                      <div
+                        key={p.key}
+                        style={{
+                          border: `2px solid ${p.color}`,
+                          borderRadius: "10px",
+                          padding: "16px",
+                          position: "relative",
+                        }}
+                      >
+                        {"badge" in p && p.badge && (
+                          <div
+                            style={{
+                              position: "absolute",
+                              top: "-10px",
+                              right: "12px",
+                              background: "#2D8C4E",
+                              color: "#fff",
+                              fontSize: "10px",
+                              fontWeight: 700,
+                              padding: "2px 8px",
+                              borderRadius: "20px",
+                            }}
+                          >
+                            {p.badge}
+                          </div>
+                        )}
+                        <div
+                          style={{
+                            fontSize: "14px",
+                            fontWeight: 700,
+                            color: p.color,
+                          }}
+                        >
+                          {p.name}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: "22px",
+                            fontWeight: 800,
+                            color: "#0F2A4A",
+                            margin: "4px 0 10px",
+                          }}
+                        >
+                          {p.price}
+                          <span
+                            style={{
+                              fontSize: "12px",
+                              color: "#64748B",
+                              fontWeight: 400,
+                            }}
+                          >
+                            {p.period}
+                          </span>
+                        </div>
+                        {p.features.map((f) => (
+                          <div
+                            key={f}
+                            style={{
+                              fontSize: "11px",
+                              color: "#64748B",
+                              marginBottom: "3px",
+                            }}
+                          >
+                            ✓ {f}
+                          </div>
+                        ))}
+                        <button
+                          onClick={() => handleSubscribe(p.key)}
+                          disabled={checkoutLoading === p.key}
+                          style={{
+                            width: "100%",
+                            marginTop: "14px",
+                            padding: "9px",
+                            borderRadius: "7px",
+                            border: "none",
+                            background:
+                              checkoutLoading === p.key ? "#94A3B8" : p.color,
+                            color: "#fff",
+                            fontSize: "13px",
+                            fontWeight: 700,
+                            cursor:
+                              checkoutLoading === p.key
+                                ? "not-allowed"
+                                : "pointer",
+                            fontFamily: "inherit",
+                          }}
+                        >
+                          {checkoutLoading === p.key
+                            ? "Redirecting..."
+                            : "Subscribe Now →"}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {isPro && (
+                  <div
+                    style={{
+                      background: "#F0FDF4",
+                      border: "1px solid #BBF7D0",
+                      borderRadius: "10px",
+                      padding: "16px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: "14px",
+                        fontWeight: 700,
+                        color: "#16A34A",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      ✓ Pro Active
+                    </div>
+                    <div style={{ fontSize: "13px", color: "#64748B" }}>
+                      Manage your subscription via your LemonSqueezy customer
+                      portal.
+                    </div>
                   </div>
                 )}
               </div>
