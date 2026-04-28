@@ -43,19 +43,9 @@ export default function DashboardPage() {
   const mainPanelRef = useRef<HTMLDivElement>(null);
 
   const [uid, setUid] = useState<string | null>(null);
-<<<<<<< HEAD
   const [activeTab, setActiveTab] = useState<
     "reports" | "templates" | "settings"
   >("reports");
-=======
-<<<<<<< HEAD
-  const [activeTab, setActiveTab] = useState<
-    "reports" | "templates" | "settings"
-  >("reports");
-=======
-  const [activeTab, setActiveTab] = useState<"reports" | "templates">("reports");
->>>>>>> 853a6843c86edb5512f290f2c4b19d1f5ec40661
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
   const [isMobile, setIsMobile] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
 
@@ -80,10 +70,6 @@ export default function DashboardPage() {
     licenseNumber: "",
     plan: "free",
   });
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
   const [settingsSaved, setSavedMsg] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsTab, setSettingsTab] = useState<
@@ -91,7 +77,6 @@ export default function DashboardPage() {
   >("account");
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
 
-  // ── helper: switch tab AND scroll panel into view ──
   const goToTab = (
     tab: "reports" | "templates" | "settings",
     subTab?: "account" | "company" | "subscription",
@@ -106,14 +91,6 @@ export default function DashboardPage() {
       });
     }, 80);
   };
-<<<<<<< HEAD
-=======
-=======
-
-  const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
-  const [pdfLoading, setPdfLoading] = useState<string | null>(null);
->>>>>>> 853a6843c86edb5512f290f2c4b19d1f5ec40661
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -129,21 +106,11 @@ export default function DashboardPage() {
         return;
       }
       setUid(u.uid);
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
       setSettings((p) => ({
         ...p,
         email: u.email || "",
         fullName: u.displayName || "",
       }));
-<<<<<<< HEAD
-=======
-=======
-      setSettings((p) => ({ ...p, email: u.email || "", fullName: u.displayName || "" }));
->>>>>>> 853a6843c86edb5512f290f2c4b19d1f5ec40661
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
     });
     return () => unsub();
   }, [router]);
@@ -204,14 +171,6 @@ export default function DashboardPage() {
     } catch {}
   };
 
-<<<<<<< HEAD
-  // ── PDF: proven approach from handoff — document.write into about:blank ──
-=======
-<<<<<<< HEAD
-=======
-  // ✅ FIXED PDF — writes to a new page via document.write properly
->>>>>>> 853a6843c86edb5512f290f2c4b19d1f5ec40661
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
   const handlePDF = async (report: Report) => {
     setPdfLoading(report.id);
     try {
@@ -232,22 +191,6 @@ export default function DashboardPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
-      const html = await pdfRes.text();
-      const win = window.open("", "_blank");
-      if (win) {
-        win.document.open();
-        win.document.write(html);
-        win.document.close();
-        setTimeout(() => win.print(), 2500);
-      }
-    } catch {
-      alert("Failed to generate PDF.");
-=======
-
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
       if (!pdfRes.ok) throw new Error("PDF generation failed");
       const html = await pdfRes.text();
       const win = window.open("about:blank", "_blank");
@@ -275,18 +218,12 @@ export default function DashboardPage() {
       alert("Failed to generate PDF. Please try again.");
     } finally {
       setPdfLoading(null);
-<<<<<<< HEAD
-=======
->>>>>>> 853a6843c86edb5512f290f2c4b19d1f5ec40661
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
     }
   };
 
-  // ── FIX: View uses router.push with auth token in header via fetch first ──
   const handleView = async (report: Report) => {
     try {
       const token = await auth.currentUser?.getIdToken();
-      // Pre-fetch to warm Firestore cache, then navigate
       fetch(`/api/reports/${report.id}`, {
         headers: { "x-user-id": uid!, Authorization: `Bearer ${token}` },
       }).catch(() => {});
@@ -294,7 +231,6 @@ export default function DashboardPage() {
     router.push(`/reports/${report.id}`);
   };
 
-  // ── FIX: Edit fetches with auth token before redirecting ──
   const handleEdit = async (report: Report) => {
     try {
       const token = await auth.currentUser?.getIdToken();
@@ -330,7 +266,6 @@ export default function DashboardPage() {
     localStorage.removeItem(`report_${id}`);
   };
 
-  // ── FIX: Settings save includes auth token ──
   const handleSaveSettings = async () => {
     if (!uid) return;
     setSettingsSaving(true);
@@ -350,7 +285,6 @@ export default function DashboardPage() {
       setSavedMsg(true);
       setTimeout(() => setSavedMsg(false), 2500);
     } catch {
-      // Fallback: save locally so data isn't lost
       localStorage.setItem("sewer_settings", JSON.stringify(settings));
       setSavedMsg(true);
       setTimeout(() => setSavedMsg(false), 2500);
@@ -359,7 +293,6 @@ export default function DashboardPage() {
     }
   };
 
-  // ── FIX: Checkout includes auth token ──
   const handleSubscribe = async (planKey: "PRO_MONTHLY" | "PRO_ANNUALLY") => {
     setCheckoutLoading(planKey);
     try {
@@ -394,7 +327,6 @@ export default function DashboardPage() {
     router.replace("/login");
   };
 
-  // ── Template handlers ──
   const handleNewTemplate = () => {
     setEditingTemplate({
       name: "",
@@ -409,6 +341,7 @@ export default function DashboardPage() {
     });
     setIsNewTemplate(true);
   };
+
   const handleSaveTemplate = () => {
     if (!editingTemplate?.name?.trim()) {
       alert("Template name is required");
@@ -427,12 +360,14 @@ export default function DashboardPage() {
     setEditingTemplate(null);
     setSavingTemplate(false);
   };
+
   const handleDeleteTemplate = (id: string) => {
     if (!confirm("Delete this template?")) return;
     const updated = templates.filter((t) => t.id !== id);
     setTemplates(updated);
     localStorage.setItem("sewer_templates", JSON.stringify(updated));
   };
+
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -443,13 +378,8 @@ export default function DashboardPage() {
       );
     reader.readAsDataURL(file);
   };
-<<<<<<< HEAD
+
   const addCustomDropdown = () =>
-=======
-<<<<<<< HEAD
-  const addCustomDropdown = () => {
-    const c = editingTemplate?.customDropdowns || [];
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
     setEditingTemplate((p) =>
       p
         ? {
@@ -461,6 +391,7 @@ export default function DashboardPage() {
           }
         : p,
     );
+
   const removeDropdown = (i: number) =>
     setEditingTemplate((p) =>
       p
@@ -472,93 +403,25 @@ export default function DashboardPage() {
           }
         : p,
     );
-<<<<<<< HEAD
-=======
-  };
-=======
 
-  const addCustomDropdown = () =>
-    setEditingTemplate((p) => p ? { ...p, customDropdowns: [...(p.customDropdowns || []), { label: "", options: [""] }] } : p);
-
->>>>>>> 853a6843c86edb5512f290f2c4b19d1f5ec40661
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
   const updateDropdownLabel = (i: number, val: string) => {
     const a = [...(editingTemplate?.customDropdowns || [])];
     a[i] = { ...a[i], label: val };
     setEditingTemplate((p) => (p ? { ...p, customDropdowns: a } : p));
   };
+
   const addDropdownOption = (i: number) => {
     const a = [...(editingTemplate?.customDropdowns || [])];
     a[i] = { ...a[i], options: [...a[i].options, ""] };
     setEditingTemplate((p) => (p ? { ...p, customDropdowns: a } : p));
   };
+
   const updateDropdownOption = (di: number, oi: number, val: string) => {
     const a = [...(editingTemplate?.customDropdowns || [])];
     const o = [...a[di].options];
     o[oi] = val;
     a[di] = { ...a[di], options: o };
-<<<<<<< HEAD
     setEditingTemplate((p) => (p ? { ...p, customDropdowns: a } : p));
-=======
-    setEditingTemplate((p) => p ? { ...p, customDropdowns: a } : p);
-  };
-
-<<<<<<< HEAD
-  const handleSaveSettings = async () => {
-    if (!uid) return;
-    setSettingsSaving(true);
-    try {
-      const token = await auth.currentUser?.getIdToken();
-      await fetch("/api/settings", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "x-user-id": uid,
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(settings),
-      });
-      localStorage.setItem("sewer_settings", JSON.stringify(settings));
-      setSavedMsg(true);
-      setTimeout(() => setSavedMsg(false), 2500);
-    } catch {
-      localStorage.setItem("sewer_settings", JSON.stringify(settings));
-    } finally {
-      setSettingsSaving(false);
-    }
-  };
-
-  // ✅ FIXED: calls LemonSqueezy checkout API directly
-=======
-  const removeDropdown = (i: number) =>
-    setEditingTemplate((p) => p ? { ...p, customDropdowns: (p.customDropdowns || []).filter((_, idx) => idx !== i) } : p);
-
-  // ✅ FIXED: Subscribe → goes to /billing
->>>>>>> 853a6843c86edb5512f290f2c4b19d1f5ec40661
-  const handleSubscribe = async (planKey: "PRO_MONTHLY" | "PRO_ANNUALLY") => {
-    setCheckoutLoading(planKey);
-    try {
-      const token = await auth.currentUser?.getIdToken();
-      const res = await fetch("/api/lemonsqueezy/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ plan: planKey, email: settings.email, name: settings.fullName }),
-      });
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        alert(data.error || "Failed to create checkout. Please try again.");
-      }
-    } catch { alert("Something went wrong. Please try again."); }
-    finally { setCheckoutLoading(null); }
-  };
-
-<<<<<<< HEAD
-  const handleLogout = async () => {
-    await signOut(auth);
-    router.replace("/login");
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
   };
 
   const filtered = reports.filter(
@@ -566,17 +429,6 @@ export default function DashboardPage() {
       r.title?.toLowerCase().includes(search.toLowerCase()) ||
       r.clientName?.toLowerCase().includes(search.toLowerCase()) ||
       r.location?.toLowerCase().includes(search.toLowerCase()),
-<<<<<<< HEAD
-=======
-=======
-  const handleLogout = async () => { await signOut(auth); router.replace("/login"); };
-
-  const filtered = reports.filter((r) =>
-    r.title?.toLowerCase().includes(search.toLowerCase()) ||
-    r.clientName?.toLowerCase().includes(search.toLowerCase()) ||
-    r.location?.toLowerCase().includes(search.toLowerCase()),
->>>>>>> 853a6843c86edb5512f290f2c4b19d1f5ec40661
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
   );
 
   const thisMonth = reports.filter((r) => {
@@ -608,10 +460,7 @@ export default function DashboardPage() {
     color: a ? "#fff" : "#64748B",
     fontFamily: "inherit",
   });
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
+
   const subTabBtn = (a: boolean): React.CSSProperties => ({
     padding: "6px 12px",
     borderRadius: "6px",
@@ -623,17 +472,14 @@ export default function DashboardPage() {
     color: a ? "#fff" : "#64748B",
     fontFamily: "inherit",
   });
-<<<<<<< HEAD
-=======
-=======
->>>>>>> 853a6843c86edb5512f290f2c4b19d1f5ec40661
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
+
   const card: React.CSSProperties = {
     background: "#fff",
     border: "1px solid #E2E8F0",
     borderRadius: "12px",
     padding: isMobile ? "14px" : "20px",
   };
+
   const inp: React.CSSProperties = {
     width: "100%",
     height: "36px",
@@ -647,6 +493,7 @@ export default function DashboardPage() {
     color: "#0F172A",
     fontFamily: "inherit",
   };
+
   const lbl: React.CSSProperties = {
     display: "block",
     fontSize: "11px",
@@ -656,18 +503,13 @@ export default function DashboardPage() {
     textTransform: "uppercase",
     letterSpacing: "0.05em",
   };
-<<<<<<< HEAD
+
   const actionBtn = (
     bg: string,
     color: string,
     disabled = false,
   ): React.CSSProperties => ({
     padding: "5px 10px",
-=======
-<<<<<<< HEAD
-  const actionBtn = (bg: string, color: string): React.CSSProperties => ({
-    padding: "5px 8px",
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
     borderRadius: "6px",
     fontSize: "11px",
     fontWeight: 600,
@@ -676,18 +518,7 @@ export default function DashboardPage() {
     background: disabled ? "#E2E8F0" : bg,
     color: disabled ? "#94A3B8" : color,
     fontFamily: "inherit",
-<<<<<<< HEAD
     opacity: disabled ? 0.7 : 1,
-=======
-=======
-  const actionBtn = (bg: string, color: string, disabled = false): React.CSSProperties => ({
-    padding: "5px 10px", borderRadius: "6px", fontSize: "11px", fontWeight: 600,
-    cursor: disabled ? "not-allowed" : "pointer", border: "none",
-    background: disabled ? "#E2E8F0" : bg,
-    color: disabled ? "#94A3B8" : color, fontFamily: "inherit",
-    opacity: disabled ? 0.7 : 1,
->>>>>>> 853a6843c86edb5512f290f2c4b19d1f5ec40661
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
   });
 
   return (
@@ -725,10 +556,6 @@ export default function DashboardPage() {
               : "Manage your inspection reports"}
           </p>
         </div>
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
 
         <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
           {!isPro && !isMobile && (
@@ -745,29 +572,11 @@ export default function DashboardPage() {
                 cursor: "pointer",
                 fontFamily: "inherit",
               }}
-<<<<<<< HEAD
-=======
-=======
-        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-          {/* ✅ Subscribe → /billing */}
-          {!isPro && !isMobile && (
-            <button
-              onClick={() => router.push("/billing")}
-              style={{ padding: "8px 14px", borderRadius: "8px", border: "none", background: "linear-gradient(135deg, #2D8C4E, #1a6b38)", color: "#fff", fontSize: "12px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
->>>>>>> 853a6843c86edb5512f290f2c4b19d1f5ec40661
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
             >
               ⚡ Subscribe Now
             </button>
           )}
-<<<<<<< HEAD
 
-=======
-<<<<<<< HEAD
-
-=======
->>>>>>> 853a6843c86edb5512f290f2c4b19d1f5ec40661
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
           <Link href="/reports/new">
             <button
               style={{
@@ -786,15 +595,7 @@ export default function DashboardPage() {
             </button>
           </Link>
 
-<<<<<<< HEAD
           {/* ── Profile Avatar ── */}
-=======
-<<<<<<< HEAD
-          {/* ── Profile Avatar ── */}
-=======
-          {/* Profile avatar */}
->>>>>>> 853a6843c86edb5512f290f2c4b19d1f5ec40661
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
           <div style={{ position: "relative" }}>
             <button
               onClick={() => setShowProfile(!showProfile)}
@@ -819,10 +620,6 @@ export default function DashboardPage() {
 
             {showProfile && (
               <>
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
                 <div
                   onClick={() => setShowProfile(false)}
                   style={{ position: "fixed", inset: 0, zIndex: 49 }}
@@ -870,16 +667,6 @@ export default function DashboardPage() {
                       >
                         {initials}
                       </div>
-<<<<<<< HEAD
-=======
-=======
-                <div onClick={() => setShowProfile(false)} style={{ position: "fixed", inset: 0, zIndex: 49 }} />
-                <div style={{ position: "absolute", top: "44px", right: 0, zIndex: 50, background: "#fff", border: "1px solid #E2E8F0", borderRadius: "12px", boxShadow: "0 8px 32px rgba(0,0,0,0.12)", width: "260px", overflow: "hidden" }}>
-                  <div style={{ padding: "16px", background: "linear-gradient(135deg, #0F2A4A, #1a3d6b)" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                      <div style={{ width: "44px", height: "44px", borderRadius: "50%", background: "#2D8C4E", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", fontWeight: 800, color: "#fff" }}>{initials}</div>
->>>>>>> 853a6843c86edb5512f290f2c4b19d1f5ec40661
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
                       <div>
                         <div
                           style={{
@@ -913,11 +700,6 @@ export default function DashboardPage() {
                     </div>
                   </div>
                   <div style={{ padding: "8px" }}>
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
-                    {/* ✅ FIXED: Settings → switches tab + scrolls */}
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
                     <button
                       onClick={() => goToTab("settings", "account")}
                       style={{
@@ -992,26 +774,6 @@ export default function DashboardPage() {
                       >
                         ⚡ Upgrade to Pro
                       </button>
-<<<<<<< HEAD
-=======
-=======
-                    {/* ✅ Settings → /settings page */}
-                    {[
-                      { label: "⚙️ Settings", path: "/settings" },
-                      { label: "💳 Billing", path: "/billing" },
-                    ].map((item) => (
-                      <button key={item.label} onClick={() => { router.push(item.path); setShowProfile(false); }}
-                        style={{ display: "block", width: "100%", padding: "10px 12px", textAlign: "left", background: "none", border: "none", borderRadius: "6px", fontSize: "13px", color: "#374151", cursor: "pointer", fontFamily: "inherit", fontWeight: 500 }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = "#F8FAFC")}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
-                      >{item.label}</button>
-                    ))}
-                    {!isPro && (
-                      <button onClick={() => { router.push("/billing"); setShowProfile(false); }}
-                        style={{ display: "block", width: "100%", padding: "10px 12px", textAlign: "left", background: "rgba(45,140,78,0.08)", border: "1px solid rgba(45,140,78,0.2)", borderRadius: "6px", fontSize: "13px", color: "#2D8C4E", cursor: "pointer", fontFamily: "inherit", fontWeight: 700, marginTop: "4px" }}
-                      >⚡ Upgrade to Pro</button>
->>>>>>> 853a6843c86edb5512f290f2c4b19d1f5ec40661
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
                     )}
                     <div
                       style={{
@@ -1055,10 +817,6 @@ export default function DashboardPage() {
 
       {/* ── Free trial banner ── */}
       {!isPro && (
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
         <div
           style={{
             display: "flex",
@@ -1098,16 +856,6 @@ export default function DashboardPage() {
               ? "Redirecting..."
               : "Subscribe Now"}
           </button>
-<<<<<<< HEAD
-=======
-=======
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", marginBottom: "16px", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: "10px" }}>
-          <div style={{ fontSize: "13px", color: "#92400E" }}>⚠ Upgrade to Pro for unlimited reports and no watermark.</div>
-          <button onClick={() => router.push("/billing")}
-            style={{ padding: "7px 16px", borderRadius: "7px", border: "none", background: "#2D8C4E", color: "#fff", fontSize: "12px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", marginLeft: "12px" }}
-          >Subscribe Now</button>
->>>>>>> 853a6843c86edb5512f290f2c4b19d1f5ec40661
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
         </div>
       )}
 
@@ -1121,10 +869,6 @@ export default function DashboardPage() {
         }}
       >
         {[
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
           {
             label: "Total Reports",
             value: reports.length,
@@ -1149,15 +893,6 @@ export default function DashboardPage() {
             color: "#2563EB",
             icon: "🗂",
           },
-<<<<<<< HEAD
-=======
-=======
-          { label: "Total Reports", value: reports.length, color: "#0F2A4A", icon: "📄" },
-          { label: "This Month", value: thisMonth, color: "#2D8C4E", icon: "✅" },
-          { label: "Drafts", value: reports.filter((r) => r.status !== "COMPLETE").length, color: "#D97706", icon: "✏️" },
-          { label: "Templates", value: templates.length, color: "#2563EB", icon: "🗂" },
->>>>>>> 853a6843c86edb5512f290f2c4b19d1f5ec40661
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
         ].map(({ label, value, color, icon }) => (
           <div key={label} style={card}>
             <div
@@ -1195,12 +930,7 @@ export default function DashboardPage() {
         ))}
       </div>
 
-<<<<<<< HEAD
       {/* ── Main Panel ── */}
-=======
-<<<<<<< HEAD
-      {/* ── Main Panel — ref attached here for scroll target ── */}
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
       <div
         ref={mainPanelRef}
         style={{
@@ -1239,18 +969,6 @@ export default function DashboardPage() {
           >
             ⚙️ Settings
           </button>
-<<<<<<< HEAD
-=======
-=======
-      {/* ── Main Panel ── */}
-      <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: "12px", overflow: "hidden" }}>
-        <div style={{ display: "flex", gap: "4px", padding: "10px 12px", borderBottom: "1px solid #E2E8F0", background: "#FAFAFA", overflowX: "auto" }}>
-          <button style={tabBtn(activeTab === "reports")} onClick={() => setActiveTab("reports")}>📄 Reports</button>
-          <button style={tabBtn(activeTab === "templates")} onClick={() => setActiveTab("templates")}>🗂 Templates</button>
-          {/* ✅ Settings → navigates to /settings page */}
-          <button style={tabBtn(false)} onClick={() => router.push("/settings")}>⚙️ Settings</button>
->>>>>>> 853a6843c86edb5512f290f2c4b19d1f5ec40661
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
         </div>
 
         {/* ── REPORTS TAB ── */}
@@ -1606,6 +1324,7 @@ export default function DashboardPage() {
                     </button>
                   </div>
                 </div>
+
                 <div style={{ marginBottom: "14px" }}>
                   <label style={lbl}>Template Name *</label>
                   <input
@@ -1619,6 +1338,7 @@ export default function DashboardPage() {
                     style={inp}
                   />
                 </div>
+
                 {[
                   {
                     title: "Company Branding",
@@ -1768,10 +1488,8 @@ export default function DashboardPage() {
                     {children}
                   </div>
                 ))}
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
+
+                {/* Custom Dropdowns */}
                 <div
                   style={{
                     padding: "14px",
@@ -1800,14 +1518,6 @@ export default function DashboardPage() {
                   >
                     Appear in the General Notes tab.
                   </p>
-<<<<<<< HEAD
-=======
-=======
-                <div style={{ padding: "14px", border: "1px solid #E2E8F0", borderRadius: "10px", marginBottom: "14px" }}>
-                  <h4 style={{ fontSize: "13px", fontWeight: 700, color: "#0F2A4A", margin: "0 0 4px", textTransform: "uppercase" }}>Custom Dropdowns</h4>
-                  <p style={{ fontSize: "12px", color: "#94A3B8", marginBottom: "14px" }}>Appear in the General Notes tab.</p>
->>>>>>> 853a6843c86edb5512f290f2c4b19d1f5ec40661
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
                   {(editingTemplate.customDropdowns || []).map((dd, i) => (
                     <div
                       key={i}
@@ -2082,10 +1792,6 @@ export default function DashboardPage() {
             )}
           </div>
         )}
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
 
         {/* ── SETTINGS TAB ── */}
         {activeTab === "settings" && (
@@ -2541,11 +2247,6 @@ export default function DashboardPage() {
             )}
           </div>
         )}
-<<<<<<< HEAD
-=======
-=======
->>>>>>> 853a6843c86edb5512f290f2c4b19d1f5ec40661
->>>>>>> 3069455b21abdd75a7f429b951737bb5b3d0d4b2
       </div>
     </div>
   );
