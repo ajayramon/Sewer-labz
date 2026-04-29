@@ -250,6 +250,11 @@ export default function ReportBuilder() {
   >("details");
   const [dragOver, setDragOver] = useState<string | null>(null);
 
+  // ✅ FIX 1: reportStatus state — no longer hardcoded to DRAFT
+  const [reportStatus, setReportStatus] = useState<"DRAFT" | "COMPLETE">(
+    "DRAFT",
+  );
+
   const [details, setDetails] = useState({
     fileNumber: "",
     clientName: "",
@@ -302,6 +307,8 @@ export default function ReportBuilder() {
         if (res.ok) {
           const data = await res.json();
           if (data.title) setTitle(data.title);
+          // ✅ FIX 3 (edit loading): load status from saved data
+          if (data.status) setReportStatus(data.status);
           if (data.report) setDetails((p) => ({ ...p, ...data.report }));
           if (data.defects) setDefects(data.defects);
           if (data.report?.corrections) setCorrections(data.report.corrections);
@@ -317,6 +324,7 @@ export default function ReportBuilder() {
       if (local) {
         const data = JSON.parse(local);
         if (data.title) setTitle(data.title);
+        if (data.status) setReportStatus(data.status);
         if (data.report) setDetails((p) => ({ ...p, ...data.report }));
         if (data.defects) setDefects(data.defects);
       }
@@ -324,13 +332,14 @@ export default function ReportBuilder() {
     loadEdit();
   }, [editId, uid]);
 
-  const buildPayload = () => {
+  // ✅ FIX 1: buildPayload now accepts an optional status override
+  const buildPayload = (overrideStatus?: "DRAFT" | "COMPLETE") => {
     const id = editId || Date.now().toString();
     const report = {
       ...details,
       id,
       title,
-      status: "DRAFT",
+      status: overrideStatus ?? reportStatus, // uses override if provided, otherwise current state
       propertyPhotos,
       corrections,
       correctionNotes,
@@ -348,11 +357,12 @@ export default function ReportBuilder() {
     return { report, defects };
   };
 
-  const handleSaveDraft = async () => {
+  // ✅ FIX 1: handleSave accepts optional status so Mark Complete works reliably
+  const handleSaveDraft = async (overrideStatus?: "DRAFT" | "COMPLETE") => {
     if (!uid) return;
     setSaving(true);
     try {
-      const payload = buildPayload();
+      const payload = buildPayload(overrideStatus);
       const res = await fetch("/api/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-user-id": uid },
@@ -369,7 +379,12 @@ export default function ReportBuilder() {
           ...existing.filter((r: any) => r.id !== saved.id),
         ];
         localStorage.setItem("sewer_reports", JSON.stringify(updated));
-        setSavedMsg("✓ Saved");
+        if (overrideStatus === "COMPLETE") {
+          setReportStatus("COMPLETE");
+          setSavedMsg("✓ Marked Complete");
+        } else {
+          setSavedMsg("✓ Saved");
+        }
         setTimeout(() => setSavedMsg(""), 2500);
       }
     } catch {
@@ -380,6 +395,7 @@ export default function ReportBuilder() {
     }
   };
 
+  // ✅ FIX 2 & 11: No more window.open("","_blank") — opens HTML in a real new tab
   const handleGeneratePDF = async () => {
     setGenerating(true);
     try {
@@ -416,13 +432,28 @@ export default function ReportBuilder() {
           defects,
         }),
       });
-      const html = await res.text();
-      const win = window.open("", "_blank");
-      if (win) {
-        win.document.write(html);
-        win.document.close();
-        setTimeout(() => win.print(), 800);
+
+      if (!res.ok) {
+        alert("Failed to generate PDF. Please try again.");
+        return;
       }
+
+      // ✅ Get the HTML as a blob and create a real object URL — no about:blank
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const tab = window.open(url, "_blank");
+
+      // After the tab loads, trigger print dialog automatically
+      if (tab) {
+        tab.onload = () => {
+          setTimeout(() => {
+            tab.print();
+          }, 500);
+        };
+      }
+
+      // Clean up the blob URL after 2 minutes
+      setTimeout(() => URL.revokeObjectURL(url), 120_000);
     } catch {
       alert("Failed to generate PDF.");
     } finally {
@@ -603,17 +634,20 @@ export default function ReportBuilder() {
               {title} ✏️
             </span>
           )}
+          {/* ✅ FIX 1: Status badge now reflects actual status */}
           <span
             style={{
-              background: "#F1F5F9",
-              color: "#64748B",
+              background: reportStatus === "COMPLETE" ? "#F0FDF4" : "#F1F5F9",
+              color: reportStatus === "COMPLETE" ? "#16A34A" : "#64748B",
               fontSize: "11px",
               fontWeight: 600,
               padding: "3px 8px",
               borderRadius: "20px",
+              border:
+                reportStatus === "COMPLETE" ? "1px solid #BBF7D0" : "none",
             }}
           >
-            DRAFT
+            {reportStatus === "COMPLETE" ? "✓ COMPLETE" : "DRAFT"}
           </span>
         </div>
         <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
@@ -624,8 +658,27 @@ export default function ReportBuilder() {
               {savedMsg}
             </span>
           )}
+          {/* ✅ FIX 4: Mark Complete button */}
+          {reportStatus !== "COMPLETE" && (
+            <button
+              onClick={() => handleSaveDraft("COMPLETE")}
+              disabled={saving}
+              style={{
+                background: saving ? "#94A3B8" : "#2D8C4E",
+                color: "#fff",
+                border: "none",
+                borderRadius: "8px",
+                padding: "8px 18px",
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor: saving ? "not-allowed" : "pointer",
+              }}
+            >
+              ✅ Mark Complete
+            </button>
+          )}
           <button
-            onClick={handleSaveDraft}
+            onClick={() => handleSaveDraft("DRAFT")}
             disabled={saving}
             style={{
               background: saving ? "#94A3B8" : "#0F2A4A",
@@ -644,7 +697,7 @@ export default function ReportBuilder() {
             onClick={handleGeneratePDF}
             disabled={generating}
             style={{
-              background: generating ? "#94A3B8" : "#2D8C4E",
+              background: generating ? "#94A3B8" : "#1D4ED8",
               color: "#fff",
               border: "none",
               borderRadius: "8px",

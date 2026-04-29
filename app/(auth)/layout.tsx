@@ -41,20 +41,19 @@ export default function AuthLayout({
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  // Auth check
+  // ✅ FIXED: Auth check — only redirects AFTER Firebase has fully resolved
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (firebaseUser) => {
-      const isPublic = PUBLIC_PATHS.some((p) => pathname?.endsWith(p));
-      if (!firebaseUser && !isPublic) {
-        router.replace("/login");
-        return;
-      }
+      const isPublic = PUBLIC_PATHS.some((p) => pathname?.startsWith(p));
+
       if (firebaseUser) {
+        // User is logged in
         setUser({
           email: firebaseUser.email || "",
           displayName: firebaseUser.displayName || "",
         });
-        // Fetch announcements after auth
+
+        // Fetch announcements
         firebaseUser.getIdToken().then((token) => {
           fetch("/api/announcements", {
             headers: { Authorization: `Bearer ${token}` },
@@ -63,13 +62,27 @@ export default function AuthLayout({
             .then((data) => setAnnouncements(data.announcements ?? []))
             .catch(() => {});
         });
+
+        // If logged in and on a public page, go to dashboard
+        if (isPublic) {
+          router.replace("/");
+        }
+      } else {
+        // No user — only redirect if NOT on a public page
+        setUser(null);
+        if (!isPublic) {
+          router.replace("/login");
+        }
       }
+
+      // ✅ Mark as checked AFTER Firebase resolves — prevents flicker redirect
       setChecked(true);
     });
-    return () => unsub();
-  }, [pathname, router]);
 
-  // Load dismissed IDs from localStorage
+    return () => unsub();
+  }, [pathname]);
+
+  // Load dismissed announcements from localStorage
   useEffect(() => {
     try {
       const stored = localStorage.getItem("dismissed_announcements");
@@ -123,7 +136,7 @@ export default function AuthLayout({
     },
   };
 
-  // Loading screen
+  // ✅ Show loading screen while Firebase is resolving
   if (!checked) {
     return (
       <div
@@ -148,16 +161,14 @@ export default function AuthLayout({
     );
   }
 
-  // Public pages — render children with no nav
-  const isPublic = PUBLIC_PATHS.some((p) => pathname?.endsWith(p));
+  // Public pages — render with no nav
+  const isPublic = PUBLIC_PATHS.some((p) => pathname?.startsWith(p));
   if (isPublic) return <>{children}</>;
 
   const navLinks = [
     { href: "/", label: "📋 Dashboard" },
-    { href: "/reports", label: "📄 Reports" },
     { href: "/reports/new", label: "+ New Report" },
     { href: "/templates", label: "🗂 Templates" },
-    { href: "/settings", label: "⚙️ Settings" },
   ];
 
   return (
@@ -284,7 +295,6 @@ export default function AuthLayout({
             flexDirection: "column",
           }}
         >
-          {/* Backdrop */}
           <div
             onClick={() => setMenuOpen(false)}
             style={{
@@ -293,8 +303,6 @@ export default function AuthLayout({
               background: "rgba(0,0,0,0.4)",
             }}
           />
-
-          {/* Menu panel */}
           <div
             style={{
               position: "relative",
@@ -423,7 +431,7 @@ export default function AuthLayout({
                     padding: "0 4px",
                     flexShrink: 0,
                   }}
-                  aria-label="Dismiss announcement"
+                  aria-label="Dismiss"
                 >
                   ×
                 </button>
