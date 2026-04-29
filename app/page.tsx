@@ -142,19 +142,32 @@ export default function Dashboard() {
     }
   };
 
-  const handleSubscribe = (planKey: "PRO_MONTHLY" | "PRO_ANNUALLY") => {
+  // ✅ LemonSqueezy checkout — calls real API
+  const handleSubscribe = async (planKey: "PRO_MONTHLY" | "PRO_ANNUALLY") => {
     setCheckoutLoading(planKey);
-    const stripeLinks: Record<string, string> = {
-      PRO_MONTHLY: "https://buy.stripe.com/your-monthly-link",
-      PRO_ANNUALLY: "https://buy.stripe.com/your-annual-link",
-    };
-    const url = stripeLinks[planKey];
-    if (url && !url.includes("your-")) {
-      window.location.href = url;
-    } else {
-      alert(
-        "Stripe not connected yet.\n\nTo connect:\n1. Go to https://dashboard.stripe.com/payment-links\n2. Create payment links\n3. Paste them in page.tsx inside stripeLinks",
-      );
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch("/api/lemonsqueezy/checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          plan: planKey,
+          email: settings.email,
+          name: settings.fullName,
+        }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert(data.error || "Failed to create checkout. Please try again.");
+      }
+    } catch {
+      alert("Something went wrong. Please try again.");
+    } finally {
       setCheckoutLoading(null);
     }
   };
@@ -246,7 +259,9 @@ export default function Dashboard() {
       </div>
     );
 
-  const isPro = ["pro_monthly", "pro_annual", "PRO"].includes(settings.plan);
+  const isPro = ["pro_monthly", "pro_annual", "pro_annually", "PRO"].includes(
+    settings.plan,
+  );
   const initials = (settings.fullName || settings.email || "U")
     .split(" ")
     .map((n) => n[0])
@@ -549,6 +564,7 @@ export default function Dashboard() {
           >
             <span style={{ color: "#92400E", fontSize: "14px" }}>
               ⚠️ You have <strong>7 days</strong> left on your free trial.
+              Upgrade for unlimited reports.
             </span>
             <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
               <button
@@ -595,19 +611,31 @@ export default function Dashboard() {
                 }}
               >
                 {[
-                  { label: "Total Reports", value: reports.length, icon: "📄" },
+                  {
+                    label: "Total Reports",
+                    value: reports.length,
+                    icon: "📄",
+                    color: "#0F2A4A",
+                  },
                   {
                     label: "Completed This Month",
                     value: thisMonth,
                     icon: "✅",
+                    color: "#2D8C4E",
                   },
                   {
                     label: "Drafts",
                     value: reports.filter((r) => r.status !== "COMPLETE")
                       .length,
                     icon: "📝",
+                    color: "#D97706",
                   },
-                  { label: "Templates Used", value: 0, icon: "📋" },
+                  {
+                    label: "Templates Used",
+                    value: 0,
+                    icon: "📋",
+                    color: "#2563EB",
+                  },
                 ].map((stat) => (
                   <div
                     key={stat.label}
@@ -635,7 +663,7 @@ export default function Dashboard() {
                         style={{
                           fontSize: "28px",
                           fontWeight: 700,
-                          color: "#0F2A4A",
+                          color: stat.color,
                         }}
                       >
                         {stat.value}
@@ -690,7 +718,6 @@ export default function Dashboard() {
                     style={{
                       fontSize: "13px",
                       color: "#2D8C4E",
-                      cursor: "pointer",
                       fontWeight: 500,
                     }}
                   >
@@ -743,11 +770,7 @@ export default function Dashboard() {
                       <tr>
                         <td
                           colSpan={6}
-                          style={{
-                            padding: "48px 20px",
-                            textAlign: "center",
-                            color: "#94A3B8",
-                          }}
+                          style={{ padding: "48px 20px", textAlign: "center" }}
                         >
                           <div
                             style={{ fontSize: "32px", marginBottom: "12px" }}
@@ -763,9 +786,14 @@ export default function Dashboard() {
                           >
                             No reports yet
                           </div>
-                          <div style={{ marginBottom: "16px" }}>
-                            Click <strong>+ New Report</strong> to create your
-                            first inspection report
+                          <div
+                            style={{
+                              fontSize: "13px",
+                              color: "#94A3B8",
+                              marginBottom: "16px",
+                            }}
+                          >
+                            Click <strong>+ New Report</strong> to get started
                           </div>
                           <button
                             onClick={() =>
@@ -964,6 +992,7 @@ export default function Dashboard() {
                 </button>
               </div>
 
+              {/* Account Tab */}
               {settingsTab === "account" && (
                 <div
                   style={{
@@ -1057,6 +1086,7 @@ export default function Dashboard() {
                 </div>
               )}
 
+              {/* Company Tab */}
               {settingsTab === "company" && (
                 <div
                   style={{
@@ -1134,6 +1164,7 @@ export default function Dashboard() {
                 </div>
               )}
 
+              {/* Subscription Tab */}
               {settingsTab === "subscription" && (
                 <div
                   style={{
@@ -1177,7 +1208,7 @@ export default function Dashboard() {
                     <span style={{ fontSize: "13px", color: "#64748B" }}>
                       {isPro
                         ? "Unlimited reports · All features"
-                        : "5 reports/month · Free trial"}
+                        : "Free trial · 5 reports/month"}
                     </span>
                   </div>
 
@@ -1199,6 +1230,7 @@ export default function Dashboard() {
                             "Unlimited reports",
                             "Custom templates",
                             "No watermark",
+                            "Priority support",
                           ],
                           color: "#2D8C4E",
                         },
@@ -1212,6 +1244,7 @@ export default function Dashboard() {
                             "Unlimited reports",
                             "Custom templates",
                             "No watermark",
+                            "Priority support",
                           ],
                           color: "#0F2A4A",
                         },
@@ -1296,11 +1329,14 @@ export default function Dashboard() {
                               color: "#fff",
                               fontSize: "13px",
                               fontWeight: 700,
-                              cursor: "pointer",
+                              cursor:
+                                checkoutLoading === p.key
+                                  ? "not-allowed"
+                                  : "pointer",
                             }}
                           >
                             {checkoutLoading === p.key
-                              ? "Loading..."
+                              ? "Redirecting..."
                               : "Subscribe Now →"}
                           </button>
                         </div>
@@ -1327,9 +1363,27 @@ export default function Dashboard() {
                       >
                         ✓ Pro Active
                       </div>
-                      <div style={{ fontSize: "13px", color: "#64748B" }}>
+                      <div
+                        style={{
+                          fontSize: "13px",
+                          color: "#64748B",
+                          marginBottom: "12px",
+                        }}
+                      >
                         Your subscription is active. All features unlocked.
                       </div>
+                      <a
+                        href="https://app.lemonsqueezy.com/billing"
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          fontSize: "13px",
+                          color: "#2D8C4E",
+                          fontWeight: 600,
+                        }}
+                      >
+                        Manage Billing →
+                      </a>
                     </div>
                   )}
                 </div>

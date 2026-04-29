@@ -1,121 +1,89 @@
 import { NextRequest, NextResponse } from "next/server";
-import { adminAuth, adminDb } from "@/app/Lib/firebase-admin";
+import { adminDb, adminAuth } from "@/app/Lib/firebase-admin";
 
-const ADMIN_EMAILS = ["your-email@gmail.com", "client-email@gmail.com"];
-
-async function verifyAdmin(req: NextRequest) {
-  const token = req.headers.get("Authorization")?.replace("Bearer ", "");
-  if (!token) throw new Error("Unauthorized");
-  const decoded = await adminAuth.verifyIdToken(token);
-  if (!ADMIN_EMAILS.includes(decoded.email ?? "")) throw new Error("Forbidden");
-  return decoded;
-}
-
-function getMonthKey(dateStr: string) {
-  const d = new Date(dateStr);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function formatMonthKey(key: string) {
-  const [year, month] = key.split("-");
-  return new Date(Number(year), Number(month) - 1).toLocaleString("en-US", {
-    month: "short",
-    year: "2-digit",
-  });
-}
-
-function getLast12Months() {
-  const months: string[] = [];
-  const now = new Date();
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    months.push(
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
-    );
-  }
-  return months;
-}
+const ADMIN_EMAILS = ["ajayraymon750@gmail.com"]; // ← add your admin email here
 
 export async function GET(req: NextRequest) {
   try {
-    await verifyAdmin(req);
+    // Verify the request is from an admin
+    const authHeader = req.headers.get("Authorization");
+    const token = authHeader?.replace("Bearer ", "");
+    if (!token)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const [usersSnap, reportsSnap] = await Promise.all([
-      adminDb.collection("users").get(),
-      adminDb.collection("reports").get(),
-    ]);
+    const decoded = await adminAuth.verifyIdToken(token);
+    if (!ADMIN_EMAILS.includes(decoded.email || "")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
-    const users = usersSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as any);
-    const reports = reportsSnap.docs.map(
-      (d) => ({ id: d.id, ...d.data() }) as any,
+    // Get all users from Firebase Auth
+    const listResult = await adminAuth.listUsers(1000);
+
+    // Get all user settings from Firestore (plan info)
+    const users = await Promise.all(
+      listResult.users.map(async (u) => {
+        try {
+          // Get settings doc for this user
+          const settingsDoc = await adminDb
+            .collection("users")
+            .doc(u.uid)
+            .collection("settings")
+            .doc("profile")
+            .get();
+
+          // Get report count
+          const reportsSnap = await adminDb
+            .collection("users")
+            .doc(u.uid)
+            .collection("reports")
+            .get();
+
+          const settings = settingsDoc.exists ? settingsDoc.data() : {};
+
+          // Get last active from most recent report
+          let lastActive = "";
+          if (!reportsSnap.empty) {
+            const sorted = reportsSnap.docs
+              .map((d) => d.data())
+              .sort((a, b) =>
+                (b.updatedAt || "").localeCompare(a.updatedAt || ""),
+              );
+            lastActive = sorted[0]?.updatedAt || "";
+          }
+
+          return {
+            uid: u.uid,
+            email: u.email || "",
+            displayName: u.displayName || (settings as any)?.fullName || "",
+            createdAt: u.metadata.creationTime || "",
+            plan: (settings as any)?.plan || "free",
+            reportsCount: reportsSnap.size,
+            lastActive,
+            subscriptionId: (settings as any)?.subscriptionId || "",
+          };
+        } catch {
+          return {
+            uid: u.uid,
+            email: u.email || "",
+            displayName: u.displayName || "",
+            createdAt: u.metadata.creationTime || "",
+            plan: "free",
+            reportsCount: 0,
+            lastActive: "",
+          };
+        }
+      }),
     );
 
-    const totalUsers = users.length;
-    const proUsers = users.filter((u) => u.plan && u.plan !== "free").length;
-    const totalReports = reports.length;
+    // Sort by createdAt descending (newest first)
+    users.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
-    const now = new Date();
-    const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-
-    const reportsThisMonth = reports.filter((r) => {
-      const dateStr =
-        r.createdAt?.toDate?.()?.toISOString() ?? r.createdAt ?? "";
-      return getMonthKey(dateStr) === thisMonthKey;
-    }).length;
-
-    const signupsThisMonth = users.filter((u) => {
-      const dateStr =
-        u.createdAt?.toDate?.()?.toISOString() ?? u.createdAt ?? "";
-      return getMonthKey(dateStr) === thisMonthKey;
-    }).length;
-
-    const last12 = getLast12Months();
-
-    // Signups per month
-    const signupMap: Record<string, number> = {};
-    last12.forEach((k) => (signupMap[k] = 0));
-    users.forEach((u) => {
-      const dateStr =
-        u.createdAt?.toDate?.()?.toISOString() ?? u.createdAt ?? "";
-      const key = getMonthKey(dateStr);
-      if (signupMap[key] !== undefined) signupMap[key]++;
-    });
-
-    // Reports per month
-    const reportMap: Record<string, number> = {};
-    last12.forEach((k) => (reportMap[k] = 0));
-    reports.forEach((r) => {
-      const dateStr =
-        r.createdAt?.toDate?.()?.toISOString() ?? r.createdAt ?? "";
-      const key = getMonthKey(dateStr);
-      if (reportMap[key] !== undefined) reportMap[key]++;
-    });
-
-    const signupsPerMonth = last12.map((k) => ({
-      month: formatMonthKey(k),
-      count: signupMap[k],
-    }));
-    const reportsPerMonth = last12.map((k) => ({
-      month: formatMonthKey(k),
-      count: reportMap[k],
-    }));
-
-    return NextResponse.json({
-      totalUsers,
-      proUsers,
-      totalReports,
-      reportsThisMonth,
-      signupsThisMonth,
-      signupsPerMonth,
-      reportsPerMonth,
-    });
-  } catch (err: any) {
-    const status =
-      err.message === "Unauthorized"
-        ? 401
-        : err.message === "Forbidden"
-          ? 403
-          : 500;
-    return NextResponse.json({ error: err.message }, { status });
+    return NextResponse.json({ users });
+  } catch (err) {
+    console.error("GET /api/admin/users", err);
+    return NextResponse.json(
+      { error: "Failed to fetch users" },
+      { status: 500 },
+    );
   }
 }

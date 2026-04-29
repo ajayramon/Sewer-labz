@@ -1,19 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { adminAuth, adminDb } from "@/app/Lib/firebase-admin";
+import { adminDb, adminAuth } from "@/app/Lib/firebase-admin";
 
-const ADMIN_EMAILS = ["your-email@gmail.com", "client-email@gmail.com"];
-
-async function verifyAdmin(req: NextRequest) {
-  const token = req.headers.get("Authorization")?.replace("Bearer ", "");
-  if (!token) throw new Error("Unauthorized");
-  const decoded = await adminAuth.verifyIdToken(token);
-  if (!ADMIN_EMAILS.includes(decoded.email ?? "")) throw new Error("Forbidden");
-  return decoded;
-}
+const ADMIN_EMAILS = ["ajayraymon750@gmail.com"]; // ← add your admin email here
 
 export async function POST(req: NextRequest) {
   try {
-    await verifyAdmin(req);
+    // Verify admin
+    const authHeader = req.headers.get("Authorization");
+    const token = authHeader?.replace("Bearer ", "");
+    if (!token)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const decoded = await adminAuth.verifyIdToken(token);
+    if (!ADMIN_EMAILS.includes(decoded.email || "")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { uid, plan } = await req.json();
 
     if (!uid || !plan) {
@@ -28,20 +30,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
     }
 
-    await adminDb.collection("users").doc(uid).update({
-      plan,
-      planUpdatedAt: new Date().toISOString(),
-      planUpdatedBy: "admin",
-    });
+    // Update plan in Firestore
+    await adminDb
+      .collection("users")
+      .doc(uid)
+      .collection("settings")
+      .doc("profile")
+      .set({ plan, updatedAt: new Date().toISOString() }, { merge: true });
 
     return NextResponse.json({ success: true, uid, plan });
-  } catch (err: any) {
-    const status =
-      err.message === "Unauthorized"
-        ? 401
-        : err.message === "Forbidden"
-          ? 403
-          : 500;
-    return NextResponse.json({ error: err.message }, { status });
+  } catch (err) {
+    console.error("POST /api/admin/users/plan", err);
+    return NextResponse.json(
+      { error: "Failed to update plan" },
+      { status: 500 },
+    );
   }
 }
