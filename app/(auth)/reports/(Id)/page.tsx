@@ -59,18 +59,26 @@ export default function ViewReportPage() {
   const loadReport = async (userId: string) => {
     setLoading(true);
     try {
+      const token = await auth.currentUser?.getIdToken();
       const res = await fetch(`/api/reports/${id}`, {
-        headers: { "x-user-id": userId },
+        headers: { "x-user-id": userId, Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
         const data = await res.json();
-        setReport(data.report || data);
-        setDefects(data.defects || []);
-        localStorage.setItem(`report_${id}`, JSON.stringify(data));
+        // ✅ FIX: API returns { report, defects } — handle both shapes
+        const reportData = data.report || data;
+        const defectsData = data.defects || reportData.defects || [];
+        setReport(reportData);
+        setDefects(defectsData);
+        localStorage.setItem(
+          `report_${id}`,
+          JSON.stringify({ report: reportData, defects: defectsData }),
+        );
       } else {
         throw new Error("Not found");
       }
     } catch {
+      // Fall back to localStorage
       const local = localStorage.getItem(`report_${id}`);
       if (local) {
         const data = JSON.parse(local);
@@ -82,18 +90,30 @@ export default function ViewReportPage() {
     }
   };
 
+  // ✅ FIX: Edit loads correct data shape before navigating
   const handleEdit = async () => {
     try {
+      const token = await auth.currentUser?.getIdToken();
       const res = await fetch(`/api/reports/${id}`, {
-        headers: { "x-user-id": uid! },
+        headers: { "x-user-id": uid!, Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
         const data = await res.json();
         localStorage.setItem(`report_edit_${id}`, JSON.stringify(data));
+      } else {
+        throw new Error("API failed");
       }
     } catch {
+      // Use cached data
       const local = localStorage.getItem(`report_${id}`);
-      if (local) localStorage.setItem(`report_edit_${id}`, local);
+      if (local) {
+        localStorage.setItem(`report_edit_${id}`, local);
+      } else {
+        localStorage.setItem(
+          `report_edit_${id}`,
+          JSON.stringify({ report, defects }),
+        );
+      }
     }
     router.push(`/reports/new?edit=${id}`);
   };
@@ -101,25 +121,21 @@ export default function ViewReportPage() {
   const handlePDF = async () => {
     setGenerating(true);
     setPdfError("");
-
     try {
-      // Get freshest report data, fall back to local cache
       let data: any = null;
       try {
+        const token = await auth.currentUser?.getIdToken();
         const res = await fetch(`/api/reports/${id}`, {
-          headers: { "x-user-id": uid! },
+          headers: { "x-user-id": uid!, Authorization: `Bearer ${token}` },
         });
         if (res.ok) data = await res.json();
-      } catch {
-        /* network error, use cache below */
-      }
+      } catch {}
 
       if (!data) {
         const local = localStorage.getItem(`report_${id}`);
         data = local ? JSON.parse(local) : { report, defects };
       }
 
-      // Call PDF route
       const res = await fetch("/api/reports/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -131,31 +147,21 @@ export default function ViewReportPage() {
         throw new Error(err.error || `PDF generation failed (${res.status})`);
       }
 
-      // ✅ KEY FIX: use a Blob URL instead of window.open("", "_blank")
-      // window.open("", "_blank") gets blocked as a popup by browsers.
-      // Blob URL opens in the same tab context — never blocked.
-      const html = await res.text();
-      const blob = new Blob([html], { type: "text/html" });
-      const blobUrl = URL.createObjectURL(blob);
-
-      // Open the blob URL in a new tab — this is never blocked
-      const newTab = window.open(blobUrl, "_blank");
-
-      // Clean up the blob URL after the tab has loaded
-      if (newTab) {
-        newTab.addEventListener("load", () => {
-          URL.revokeObjectURL(blobUrl);
-        });
+      // ✅ Blob URL — never blocked by browsers
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const tab = window.open(url, "_blank");
+      if (tab) {
+        tab.onload = () => setTimeout(() => tab.print(), 500);
       } else {
-        // Fallback: if somehow still blocked, trigger a download instead
         const a = document.createElement("a");
-        a.href = blobUrl;
+        a.href = url;
         a.download = `${report?.title || "inspection-report"}.html`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
       }
+      setTimeout(() => URL.revokeObjectURL(url), 120_000);
     } catch (err: any) {
       console.error("PDF error:", err);
       setPdfError(err?.message || "PDF generation failed. Please try again.");
@@ -236,7 +242,7 @@ export default function ViewReportPage() {
             Report not found
           </div>
           <button
-            onClick={() => router.push("/reports")}
+            onClick={() => router.push("/")}
             style={{
               background: "#0F2A4A",
               color: "#fff",
@@ -247,7 +253,7 @@ export default function ViewReportPage() {
               fontWeight: 600,
             }}
           >
-            ← Back to Reports
+            ← Back to Dashboard
           </button>
         </div>
       </div>
@@ -276,8 +282,9 @@ export default function ViewReportPage() {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          {/* ✅ FIX: back goes to dashboard not /reports */}
           <button
-            onClick={() => router.push("/reports")}
+            onClick={() => router.push("/")}
             style={{
               background: "none",
               border: "none",
@@ -286,7 +293,7 @@ export default function ViewReportPage() {
               fontSize: "14px",
             }}
           >
-            ← Reports
+            ← Dashboard
           </button>
           <span style={{ color: "#E2E8F0" }}>|</span>
           <span style={{ fontSize: "15px", fontWeight: 600, color: "#0F2A4A" }}>
@@ -763,6 +770,35 @@ export default function ViewReportPage() {
                   </p>
                 </div>
               )}
+            </div>
+          )}
+
+        {/* End of Report Statements */}
+        {report.endOfReport &&
+          Object.values(report.endOfReport).some(
+            (v: any) => v && v !== "Select...",
+          ) && (
+            <div style={card}>
+              <h3 style={secTitle}>End of Report</h3>
+              {Object.values(report.endOfReport)
+                .filter((v: any) => v && v !== "Select...")
+                .map((v: any, i: number) => (
+                  <div
+                    key={i}
+                    style={{
+                      padding: "12px",
+                      background: "#F0FDF4",
+                      borderRadius: "8px",
+                      borderLeft: "3px solid #2D8C4E",
+                      marginBottom: "10px",
+                      fontSize: "13px",
+                      color: "#166534",
+                      lineHeight: "1.7",
+                    }}
+                  >
+                    {v}
+                  </div>
+                ))}
             </div>
           )}
       </div>
