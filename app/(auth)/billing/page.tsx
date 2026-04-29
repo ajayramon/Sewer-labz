@@ -67,10 +67,10 @@ const plans = [
 
 export default function BillingPage() {
   const router = useRouter();
-  const [uid, setUid] = useState<string | null>(null);
   const [userPlan, setUserPlan] = useState<UserPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState("");
+  const [checkoutError, setCheckoutError] = useState("");
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -78,7 +78,6 @@ export default function BillingPage() {
         router.replace("/login");
         return;
       }
-      setUid(u.uid);
       try {
         const res = await fetch("/api/settings", {
           headers: { "x-user-id": u.uid },
@@ -109,25 +108,52 @@ export default function BillingPage() {
   }, []);
 
   const handleSubscribe = async (planId: string) => {
-    if (!uid || !userPlan) return;
+    if (!userPlan) return;
     if (planId === "FREE") return;
+
     setCheckoutLoading(planId);
+    setCheckoutError("");
+
     try {
+      // ✅ Get fresh Firebase ID token and send in Authorization header
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        router.replace("/login");
+        return;
+      }
+
+      const token = await currentUser.getIdToken();
+
       const res = await fetch("/api/lemonsqueezy/checkout", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`, // ✅ Required by API route
+        },
         body: JSON.stringify({
           plan: planId,
           email: userPlan.email,
           name: userPlan.fullName,
-          userId: uid,
         }),
       });
+
       const data = await res.json();
-      if (data.url) window.location.href = data.url;
-      else alert("Failed to create checkout. Please try again.");
-    } catch {
-      alert("Something went wrong. Please try again.");
+
+      if (!res.ok) {
+        // Show the real server error instead of a generic message
+        setCheckoutError(data.error || `Server error ${res.status}`);
+        return;
+      }
+
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        setCheckoutError("No checkout URL returned. Please try again.");
+      }
+    } catch (err) {
+      setCheckoutError(
+        err instanceof Error ? err.message : "Network error. Please try again.",
+      );
     } finally {
       setCheckoutLoading("");
     }
@@ -218,6 +244,24 @@ export default function BillingPage() {
           Manage your subscription and plan
         </p>
       </div>
+
+      {/* Error banner */}
+      {checkoutError && (
+        <div
+          style={{
+            background: "#FEF2F2",
+            border: "1px solid #FECACA",
+            borderRadius: "8px",
+            padding: "12px 16px",
+            marginBottom: "20px",
+            fontSize: "13px",
+            color: "#DC2626",
+            fontWeight: 600,
+          }}
+        >
+          ⚠️ {checkoutError}
+        </div>
+      )}
 
       {/* Current Plan Card */}
       {userPlan && (
@@ -445,7 +489,6 @@ export default function BillingPage() {
                 transition: "border-color 0.2s",
               }}
             >
-              {/* Badge */}
               {plan.badge && (
                 <div
                   style={{
@@ -465,7 +508,6 @@ export default function BillingPage() {
                 </div>
               )}
 
-              {/* Current badge */}
               {isCurrent && (
                 <div
                   style={{
@@ -557,6 +599,7 @@ export default function BillingPage() {
                   fontWeight: 700,
                   cursor:
                     isCurrent || plan.id === "FREE" ? "default" : "pointer",
+                  transition: "opacity 0.2s",
                 }}
               >
                 {isLoading

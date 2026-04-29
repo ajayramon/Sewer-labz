@@ -14,6 +14,18 @@ type Report = {
   fileNumber: string;
 };
 
+type Template = {
+  id: string;
+  name: string;
+  companyName: string;
+  companyLogo: string;
+  companyTagline: string;
+  statementOfService: string;
+  includeDefectGraphic: boolean;
+  showSuggestedMaintenance: boolean;
+  customDropdowns: { label: string; options: string[] }[];
+};
+
 type Settings = {
   fullName: string;
   email: string;
@@ -31,17 +43,28 @@ export default function Dashboard() {
   const [checking, setChecking] = useState(true);
   const [uid, setUid] = useState<string | null>(null);
 
-  const [activeView, setActiveView] = useState<"dashboard" | "settings">(
-    "dashboard",
-  );
+  // Active view: dashboard, templates, settings
+  const [activeView, setActiveView] = useState<
+    "dashboard" | "templates" | "settings"
+  >("dashboard");
   const [settingsTab, setSettingsTab] = useState<
     "account" | "company" | "subscription"
   >("account");
 
+  // Reports
   const [reports, setReports] = useState<Report[]>([]);
   const [reportsLoading, setReportsLoading] = useState(true);
+  const [search, setSearch] = useState("");
   const [pdfLoading, setPdfLoading] = useState<string | null>(null);
 
+  // Templates
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [editingTemplate, setEditingTemplate] =
+    useState<Partial<Template> | null>(null);
+  const [isNewTemplate, setIsNewTemplate] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+
+  // Settings
   const [settings, setSettings] = useState<Settings>({
     fullName: "",
     email: "",
@@ -56,6 +79,7 @@ export default function Dashboard() {
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
 
+  // Auth
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       if (!u) {
@@ -71,10 +95,12 @@ export default function Dashboard() {
       setChecking(false);
       loadReports(u.uid);
       loadSettings(u.uid);
+      loadTemplates(u.uid);
     });
     return () => unsub();
   }, []);
 
+  // ── Data loading ──
   const loadReports = async (userId: string) => {
     setReportsLoading(true);
     try {
@@ -116,6 +142,32 @@ export default function Dashboard() {
     } catch {}
   };
 
+  const loadTemplates = async (userId: string) => {
+    const local = localStorage.getItem("sewer_templates");
+    if (local) {
+      try {
+        setTemplates(JSON.parse(local));
+      } catch {}
+    }
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch("/api/templates", {
+        headers: { "x-user-id": userId, Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.templates?.length) {
+          setTemplates(data.templates);
+          localStorage.setItem(
+            "sewer_templates",
+            JSON.stringify(data.templates),
+          );
+        }
+      }
+    } catch {}
+  };
+
+  // ── Settings ──
   const handleSaveSettings = async () => {
     if (!uid) return;
     setSettingsSaving(true);
@@ -142,7 +194,7 @@ export default function Dashboard() {
     }
   };
 
-  // ✅ LemonSqueezy checkout — calls real API
+  // ── LemonSqueezy checkout ──
   const handleSubscribe = async (planKey: "PRO_MONTHLY" | "PRO_ANNUALLY") => {
     setCheckoutLoading(planKey);
     try {
@@ -160,11 +212,8 @@ export default function Dashboard() {
         }),
       });
       const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        alert(data.error || "Failed to create checkout. Please try again.");
-      }
+      if (data.url) window.location.href = data.url;
+      else alert(data.error || "Failed to create checkout. Please try again.");
     } catch {
       alert("Something went wrong. Please try again.");
     } finally {
@@ -172,6 +221,7 @@ export default function Dashboard() {
     }
   };
 
+  // ── PDF ──
   const handlePDF = async (report: Report) => {
     setPdfLoading(report.id);
     try {
@@ -213,6 +263,28 @@ export default function Dashboard() {
     }
   };
 
+  // ── Reports ──
+  const handleEdit = async (report: Report) => {
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch(`/api/reports/${report.id}`, {
+        headers: { "x-user-id": uid!, Authorization: `Bearer ${token}` },
+      });
+      if (res.ok)
+        localStorage.setItem(
+          `report_edit_${report.id}`,
+          JSON.stringify(await res.json()),
+        );
+    } catch {
+      const local = localStorage.getItem(`report_${report.id}`);
+      localStorage.setItem(
+        `report_edit_${report.id}`,
+        local || JSON.stringify({ report, defects: [] }),
+      );
+    }
+    window.location.href = `/reports/new?edit=${report.id}`;
+  };
+
   const handleDeleteReport = async (id: string) => {
     if (!confirm("Delete this report?")) return;
     try {
@@ -227,11 +299,149 @@ export default function Dashboard() {
     localStorage.setItem("sewer_reports", JSON.stringify(updated));
   };
 
+  // ── Templates ──
+  const handleNewTemplate = () => {
+    setEditingTemplate({
+      name: "",
+      companyName: "Sewer Labz",
+      companyTagline: "Don't Let Your Drain Be A Pain!",
+      companyLogo: "",
+      includeDefectGraphic: true,
+      showSuggestedMaintenance: true,
+      customDropdowns: [],
+      statementOfService:
+        "Sewer Labz is a professional sewer inspection company.",
+    });
+    setIsNewTemplate(true);
+  };
+
+  const handleSaveTemplate = async () => {
+    if (!editingTemplate?.name?.trim()) {
+      alert("Template name is required");
+      return;
+    }
+    setSavingTemplate(true);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      if (isNewTemplate) {
+        const res = await fetch("/api/templates", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-user-id": uid!,
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(editingTemplate),
+        });
+        if (res.ok) {
+          const saved = await res.json();
+          const updated = [saved, ...templates];
+          setTemplates(updated);
+          localStorage.setItem("sewer_templates", JSON.stringify(updated));
+        } else throw new Error("API failed");
+      } else {
+        const res = await fetch(`/api/templates/${editingTemplate.id}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "x-user-id": uid!,
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(editingTemplate),
+        });
+        if (res.ok) {
+          const saved = await res.json();
+          const updated = templates.map((t) => (t.id === saved.id ? saved : t));
+          setTemplates(updated);
+          localStorage.setItem("sewer_templates", JSON.stringify(updated));
+        } else throw new Error("API failed");
+      }
+    } catch {
+      // localStorage fallback
+      const fallback: Template = {
+        ...(editingTemplate as Template),
+        id: (editingTemplate as any).id || Date.now().toString(),
+      };
+      const updated = isNewTemplate
+        ? [fallback, ...templates]
+        : templates.map((t) => (t.id === fallback.id ? fallback : t));
+      setTemplates(updated);
+      localStorage.setItem("sewer_templates", JSON.stringify(updated));
+    }
+    setEditingTemplate(null);
+    setSavingTemplate(false);
+  };
+
+  const handleDeleteTemplate = async (id: string) => {
+    if (!confirm("Delete this template?")) return;
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      await fetch(`/api/templates/${id}`, {
+        method: "DELETE",
+        headers: { "x-user-id": uid!, Authorization: `Bearer ${token}` },
+      });
+    } catch {}
+    const updated = templates.filter((t) => t.id !== id);
+    setTemplates(updated);
+    localStorage.setItem("sewer_templates", JSON.stringify(updated));
+  };
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) =>
+      setEditingTemplate((p) =>
+        p ? { ...p, companyLogo: ev.target?.result as string } : p,
+      );
+    reader.readAsDataURL(file);
+  };
+
+  const addDropdown = () =>
+    setEditingTemplate((p) =>
+      p
+        ? {
+            ...p,
+            customDropdowns: [
+              ...(p.customDropdowns || []),
+              { label: "", options: [""] },
+            ],
+          }
+        : p,
+    );
+  const removeDropdown = (i: number) =>
+    setEditingTemplate((p) =>
+      p
+        ? {
+            ...p,
+            customDropdowns: (p.customDropdowns || []).filter(
+              (_, idx) => idx !== i,
+            ),
+          }
+        : p,
+    );
+  const updateDropdownLabel = (i: number, val: string) => {
+    const a = [...(editingTemplate?.customDropdowns || [])];
+    a[i] = { ...a[i], label: val };
+    setEditingTemplate((p) => (p ? { ...p, customDropdowns: a } : p));
+  };
+  const addDropdownOption = (i: number) => {
+    const a = [...(editingTemplate?.customDropdowns || [])];
+    a[i] = { ...a[i], options: [...a[i].options, ""] };
+    setEditingTemplate((p) => (p ? { ...p, customDropdowns: a } : p));
+  };
+  const updateDropdownOption = (di: number, oi: number, val: string) => {
+    const a = [...(editingTemplate?.customDropdowns || [])];
+    const o = [...a[di].options];
+    o[oi] = val;
+    a[di] = { ...a[di], options: o };
+    setEditingTemplate((p) => (p ? { ...p, customDropdowns: a } : p));
+  };
+
   const handleLogout = async () => {
     await signOut(auth);
     window.location.href = "/login";
   };
-
   const goToSettings = (tab: "account" | "company" | "subscription") => {
     setActiveView("settings");
     setSettingsTab(tab);
@@ -276,7 +486,14 @@ export default function Dashboard() {
       d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
     );
   }).length;
+  const filtered = reports.filter(
+    (r) =>
+      r.title?.toLowerCase().includes(search.toLowerCase()) ||
+      r.clientName?.toLowerCase().includes(search.toLowerCase()) ||
+      r.location?.toLowerCase().includes(search.toLowerCase()),
+  );
 
+  // ── Styles ──
   const inp: React.CSSProperties = {
     width: "100%",
     height: "38px",
@@ -357,7 +574,7 @@ export default function Dashboard() {
           }}
         >
           <div style={{ fontSize: "22px", fontWeight: 900 }}>
-            <span style={{ color: "#ffffff" }}>SEWER </span>
+            <span style={{ color: "#fff" }}>SEWER </span>
             <span style={{ color: "#2D8C4E" }}>LABZ</span>
           </div>
           <div
@@ -390,10 +607,8 @@ export default function Dashboard() {
             {
               icon: "📋",
               label: "Templates",
-              action: () => {
-                window.location.href = "/templates";
-              },
-              active: false,
+              action: () => setActiveView("templates"),
+              active: activeView === "templates",
             },
             {
               icon: "⚙️",
@@ -530,7 +745,11 @@ export default function Dashboard() {
                 margin: 0,
               }}
             >
-              {activeView === "settings" ? "Settings" : "Dashboard"}
+              {activeView === "settings"
+                ? "Settings"
+                : activeView === "templates"
+                  ? "Templates"
+                  : "Dashboard"}
             </h1>
           </div>
           <button
@@ -564,7 +783,6 @@ export default function Dashboard() {
           >
             <span style={{ color: "#92400E", fontSize: "14px" }}>
               ⚠️ You have <strong>7 days</strong> left on your free trial.
-              Upgrade for unlimited reports.
             </span>
             <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
               <button
@@ -598,10 +816,11 @@ export default function Dashboard() {
           </div>
         )}
 
-        <div style={{ padding: "24px", flex: 1 }}>
+        <div style={{ padding: "24px", flex: 1, overflowY: "auto" }}>
           {/* ── DASHBOARD VIEW ── */}
           {activeView === "dashboard" && (
             <>
+              {/* Stats */}
               <div
                 style={{
                   display: "grid",
@@ -631,8 +850,8 @@ export default function Dashboard() {
                     color: "#D97706",
                   },
                   {
-                    label: "Templates Used",
-                    value: 0,
+                    label: "Templates",
+                    value: templates.length,
                     icon: "📋",
                     color: "#2563EB",
                   },
@@ -687,6 +906,7 @@ export default function Dashboard() {
                 ))}
               </div>
 
+              {/* Reports table */}
               <div
                 style={{
                   background: "#fff",
@@ -714,16 +934,24 @@ export default function Dashboard() {
                   >
                     Recent Reports
                   </h2>
-                  <span
-                    style={{
-                      fontSize: "13px",
-                      color: "#2D8C4E",
-                      fontWeight: 500,
-                    }}
-                  >
-                    View all →
-                  </span>
                 </div>
+
+                {/* Search */}
+                <div
+                  style={{
+                    padding: "12px 20px",
+                    borderBottom: "1px solid #F1F5F9",
+                  }}
+                >
+                  <input
+                    type="text"
+                    placeholder="Search reports..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    style={{ ...inp, height: "36px" }}
+                  />
+                </div>
+
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ background: "#F8FAFC" }}>
@@ -738,9 +966,9 @@ export default function Dashboard() {
                         <th
                           key={h}
                           style={{
-                            padding: "12px 20px",
+                            padding: "10px 20px",
                             textAlign: "left",
-                            fontSize: "12px",
+                            fontSize: "11px",
                             fontWeight: 700,
                             color: "#64748B",
                             textTransform: "uppercase",
@@ -766,7 +994,7 @@ export default function Dashboard() {
                           ⏳ Loading reports...
                         </td>
                       </tr>
-                    ) : reports.length === 0 ? (
+                    ) : filtered.length === 0 ? (
                       <tr>
                         <td
                           colSpan={6}
@@ -815,7 +1043,7 @@ export default function Dashboard() {
                         </td>
                       </tr>
                     ) : (
-                      reports.slice(0, 10).map((report) => (
+                      filtered.slice(0, 20).map((report) => (
                         <tr
                           key={report.id}
                           style={{ borderBottom: "1px solid #F1F5F9" }}
@@ -880,9 +1108,7 @@ export default function Dashboard() {
                           <td style={{ padding: "12px 20px" }}>
                             <div style={{ display: "flex", gap: "6px" }}>
                               <button
-                                onClick={() =>
-                                  (window.location.href = `/reports/new?edit=${report.id}`)
-                                }
+                                onClick={() => handleEdit(report)}
                                 style={actionBtn("#EFF6FF", "#2563EB")}
                               >
                                 Edit
@@ -913,6 +1139,587 @@ export default function Dashboard() {
                 </table>
               </div>
             </>
+          )}
+
+          {/* ── TEMPLATES VIEW ── */}
+          {activeView === "templates" && (
+            <div style={{ maxWidth: "900px" }}>
+              {editingTemplate ? (
+                <div>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: "20px",
+                    }}
+                  >
+                    <h3
+                      style={{
+                        fontSize: "16px",
+                        fontWeight: 700,
+                        color: "#0F2A4A",
+                        margin: 0,
+                      }}
+                    >
+                      {isNewTemplate ? "New Template" : "Edit Template"}
+                    </h3>
+                    <div style={{ display: "flex", gap: "10px" }}>
+                      <button
+                        onClick={() => setEditingTemplate(null)}
+                        style={{
+                          padding: "8px 14px",
+                          borderRadius: "6px",
+                          border: "1px solid #E2E8F0",
+                          background: "#fff",
+                          fontSize: "13px",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          color: "#64748B",
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleSaveTemplate}
+                        disabled={savingTemplate}
+                        style={{
+                          padding: "8px 18px",
+                          borderRadius: "6px",
+                          border: "none",
+                          background: savingTemplate ? "#94A3B8" : "#2D8C4E",
+                          color: "#fff",
+                          fontSize: "13px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {savingTemplate ? "Saving..." : "Save Template"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Template Name */}
+                  <div
+                    style={{
+                      background: "#fff",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: "12px",
+                      padding: "20px",
+                      marginBottom: "16px",
+                    }}
+                  >
+                    <label style={lbl}>Template Name *</label>
+                    <input
+                      value={editingTemplate.name || ""}
+                      onChange={(e) =>
+                        setEditingTemplate((p) =>
+                          p ? { ...p, name: e.target.value } : p,
+                        )
+                      }
+                      placeholder="e.g. Standard Residential Inspection"
+                      style={inp}
+                    />
+                  </div>
+
+                  {/* Company Branding */}
+                  <div
+                    style={{
+                      background: "#fff",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: "12px",
+                      padding: "20px",
+                      marginBottom: "16px",
+                    }}
+                  >
+                    <h4
+                      style={{
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        color: "#0F2A4A",
+                        margin: "0 0 14px",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Company Branding
+                    </h4>
+                    <div style={{ marginBottom: "12px" }}>
+                      <label style={lbl}>Company Logo</label>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleLogoUpload}
+                        style={{ fontSize: "13px", color: "#64748B" }}
+                      />
+                      {editingTemplate.companyLogo && (
+                        <img
+                          src={editingTemplate.companyLogo}
+                          alt="Logo"
+                          style={{
+                            maxHeight: "40px",
+                            marginTop: "8px",
+                            display: "block",
+                          }}
+                        />
+                      )}
+                    </div>
+                    <div style={{ marginBottom: "12px" }}>
+                      <label style={lbl}>Company Name</label>
+                      <input
+                        value={editingTemplate.companyName || ""}
+                        onChange={(e) =>
+                          setEditingTemplate((p) =>
+                            p ? { ...p, companyName: e.target.value } : p,
+                          )
+                        }
+                        style={inp}
+                      />
+                    </div>
+                    <div>
+                      <label style={lbl}>Tagline</label>
+                      <input
+                        value={editingTemplate.companyTagline || ""}
+                        onChange={(e) =>
+                          setEditingTemplate((p) =>
+                            p ? { ...p, companyTagline: e.target.value } : p,
+                          )
+                        }
+                        style={inp}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Statement of Service */}
+                  <div
+                    style={{
+                      background: "#fff",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: "12px",
+                      padding: "20px",
+                      marginBottom: "16px",
+                    }}
+                  >
+                    <h4
+                      style={{
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        color: "#0F2A4A",
+                        margin: "0 0 14px",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Statement of Service
+                    </h4>
+                    <textarea
+                      value={editingTemplate.statementOfService || ""}
+                      onChange={(e) =>
+                        setEditingTemplate((p) =>
+                          p ? { ...p, statementOfService: e.target.value } : p,
+                        )
+                      }
+                      rows={4}
+                      style={{
+                        ...inp,
+                        height: "auto",
+                        padding: "10px 12px",
+                        resize: "vertical",
+                        lineHeight: "1.6",
+                      }}
+                    />
+                  </div>
+
+                  {/* Report Options */}
+                  <div
+                    style={{
+                      background: "#fff",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: "12px",
+                      padding: "20px",
+                      marginBottom: "16px",
+                    }}
+                  >
+                    <h4
+                      style={{
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        color: "#0F2A4A",
+                        margin: "0 0 14px",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Report Options
+                    </h4>
+                    {[
+                      {
+                        key: "includeDefectGraphic",
+                        label: "Include Common Sewer Defect Graphic",
+                      },
+                      {
+                        key: "showSuggestedMaintenance",
+                        label: 'Enable "Suggested Maintenance" severity',
+                      },
+                    ].map(({ key, label }) => (
+                      <label
+                        key={key}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "10px",
+                          marginBottom: "10px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!(editingTemplate as any)[key]}
+                          onChange={(e) =>
+                            setEditingTemplate((p) =>
+                              p ? { ...p, [key]: e.target.checked } : p,
+                            )
+                          }
+                          style={{
+                            width: "16px",
+                            height: "16px",
+                            accentColor: "#0F2A4A",
+                          }}
+                        />
+                        <span style={{ fontSize: "13px", color: "#374151" }}>
+                          {label}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+
+                  {/* Custom Dropdowns */}
+                  <div
+                    style={{
+                      background: "#fff",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: "12px",
+                      padding: "20px",
+                      marginBottom: "16px",
+                    }}
+                  >
+                    <h4
+                      style={{
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        color: "#0F2A4A",
+                        margin: "0 0 4px",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Custom Dropdowns
+                    </h4>
+                    <p
+                      style={{
+                        fontSize: "12px",
+                        color: "#94A3B8",
+                        marginBottom: "14px",
+                      }}
+                    >
+                      Appear in the General Notes tab.
+                    </p>
+                    {(editingTemplate.customDropdowns || []).map((dd, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          border: "1px solid #E2E8F0",
+                          borderRadius: "8px",
+                          padding: "12px",
+                          marginBottom: "10px",
+                          background: "#FAFAFA",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: "8px",
+                            marginBottom: "8px",
+                          }}
+                        >
+                          <input
+                            value={dd.label}
+                            onChange={(e) =>
+                              updateDropdownLabel(i, e.target.value)
+                            }
+                            placeholder="Dropdown label"
+                            style={{ ...inp, flex: 1 }}
+                          />
+                          <button
+                            onClick={() => removeDropdown(i)}
+                            style={{
+                              padding: "0 10px",
+                              borderRadius: "6px",
+                              border: "none",
+                              background: "#FEF2F2",
+                              color: "#DC2626",
+                              cursor: "pointer",
+                              fontWeight: 700,
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        {dd.options.map((opt, oi) => (
+                          <input
+                            key={oi}
+                            value={opt}
+                            onChange={(e) =>
+                              updateDropdownOption(i, oi, e.target.value)
+                            }
+                            placeholder={`Option ${oi + 1}`}
+                            style={{
+                              ...inp,
+                              marginBottom: "6px",
+                              display: "block",
+                            }}
+                          />
+                        ))}
+                        <button
+                          onClick={() => addDropdownOption(i)}
+                          style={{
+                            fontSize: "12px",
+                            color: "#2563EB",
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                          }}
+                        >
+                          + Add Option
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      onClick={addDropdown}
+                      style={{
+                        padding: "8px 16px",
+                        borderRadius: "6px",
+                        border: "1px solid #E2E8F0",
+                        background: "#F8FAFC",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        color: "#0F2A4A",
+                      }}
+                    >
+                      + Add Dropdown
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: "20px",
+                    }}
+                  >
+                    <div>
+                      <h2
+                        style={{
+                          fontSize: "18px",
+                          fontWeight: 700,
+                          color: "#0F2A4A",
+                          margin: 0,
+                        }}
+                      >
+                        Report Templates
+                      </h2>
+                      <p
+                        style={{
+                          fontSize: "13px",
+                          color: "#94A3B8",
+                          marginTop: "4px",
+                        }}
+                      >
+                        Create and manage your report templates
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleNewTemplate}
+                      style={{
+                        background: "#2D8C4E",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "8px",
+                        padding: "10px 20px",
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      + New Template
+                    </button>
+                  </div>
+
+                  {templates.length === 0 ? (
+                    <div
+                      style={{
+                        background: "#fff",
+                        border: "2px dashed #E2E8F0",
+                        borderRadius: "12px",
+                        padding: "60px 24px",
+                        textAlign: "center",
+                      }}
+                    >
+                      <div style={{ fontSize: "32px", marginBottom: "12px" }}>
+                        🗂
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "15px",
+                          fontWeight: 600,
+                          color: "#0F2A4A",
+                          marginBottom: "6px",
+                        }}
+                      >
+                        No templates yet
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "13px",
+                          color: "#94A3B8",
+                          marginBottom: "20px",
+                        }}
+                      >
+                        Create a template to customize reports with your
+                        branding
+                      </div>
+                      <button
+                        onClick={handleNewTemplate}
+                        style={{
+                          background: "#2D8C4E",
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: "8px",
+                          padding: "10px 20px",
+                          fontSize: "13px",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Create First Template
+                      </button>
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(2, 1fr)",
+                        gap: "16px",
+                      }}
+                    >
+                      {templates.map((t) => (
+                        <div
+                          key={t.id}
+                          style={{
+                            background: "#fff",
+                            border: "1px solid #E2E8F0",
+                            borderRadius: "12px",
+                            padding: "20px",
+                          }}
+                        >
+                          {t.companyLogo && (
+                            <img
+                              src={t.companyLogo}
+                              alt="logo"
+                              style={{
+                                maxHeight: "36px",
+                                objectFit: "contain",
+                                marginBottom: "8px",
+                                display: "block",
+                              }}
+                            />
+                          )}
+                          <div
+                            style={{
+                              fontSize: "15px",
+                              fontWeight: 700,
+                              color: "#0F2A4A",
+                              marginBottom: "4px",
+                            }}
+                          >
+                            {t.name}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: "12px",
+                              color: "#94A3B8",
+                              marginBottom: "10px",
+                            }}
+                          >
+                            {t.companyName}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: "12px",
+                              color: "#64748B",
+                              marginBottom: "14px",
+                            }}
+                          >
+                            {t.includeDefectGraphic && (
+                              <span style={{ marginRight: "8px" }}>
+                                ✓ Defect Graphic
+                              </span>
+                            )}
+                            {t.showSuggestedMaintenance && (
+                              <span style={{ marginRight: "8px" }}>
+                                ✓ Suggested Maintenance
+                              </span>
+                            )}
+                            {t.customDropdowns?.length > 0 && (
+                              <span>
+                                ✓ {t.customDropdowns.length} dropdown
+                                {t.customDropdowns.length > 1 ? "s" : ""}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ display: "flex", gap: "8px" }}>
+                            <button
+                              onClick={() => {
+                                setEditingTemplate(t);
+                                setIsNewTemplate(false);
+                              }}
+                              style={{
+                                flex: 1,
+                                padding: "8px",
+                                borderRadius: "6px",
+                                border: "none",
+                                background: "#EFF6FF",
+                                color: "#2563EB",
+                                fontSize: "12px",
+                                fontWeight: 700,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDeleteTemplate(t.id)}
+                              style={{
+                                padding: "8px 14px",
+                                borderRadius: "6px",
+                                border: "none",
+                                background: "#FEF2F2",
+                                color: "#DC2626",
+                                fontSize: "12px",
+                                fontWeight: 700,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           )}
 
           {/* ── SETTINGS VIEW ── */}
@@ -992,7 +1799,6 @@ export default function Dashboard() {
                 </button>
               </div>
 
-              {/* Account Tab */}
               {settingsTab === "account" && (
                 <div
                   style={{
@@ -1086,7 +1892,6 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* Company Tab */}
               {settingsTab === "company" && (
                 <div
                   style={{
@@ -1164,7 +1969,6 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* Subscription Tab */}
               {settingsTab === "subscription" && (
                 <div
                   style={{
