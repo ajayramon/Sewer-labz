@@ -124,7 +124,7 @@ export default function BillingPage() {
 
       const token = await currentUser.getIdToken();
 
-      const res = await fetch("/api/lemonsqueezy/checkout", {
+      const res = await fetch("/api/Lemonsqueezy/checkout", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
