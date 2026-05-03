@@ -16,6 +16,7 @@ type Defect = {
   images: DefectImage[];
   expanded: boolean;
 };
+type CustomDropdown = { label: string; options: string[] };
 type Template = {
   id: string;
   name: string;
@@ -25,7 +26,7 @@ type Template = {
   statementOfService: string;
   includeDefectGraphic: boolean;
   showSuggestedMaintenance: boolean;
-  customDropdowns: { label: string; options: string[] }[];
+  customDropdowns: CustomDropdown[];
 };
 
 const conditionTypes = [
@@ -178,7 +179,7 @@ const endOfReportOptions = [
     label: "Liner Recommendation",
     key: "rec3",
     options: [
-      "Select..",
+      "Select...",
       "N/A",
       'If a liner is installed, ensure they mark the cleanout "DO NOT CABLE — LINER INSTALLED".',
       "Lining is recommended as a less invasive and cost-friendly option to replacement.",
@@ -245,6 +246,17 @@ const card: React.CSSProperties = {
   marginBottom: "16px",
 };
 
+const defaultTemplateSettings: Partial<Template> = {
+  companyName: "Sewer Labz",
+  companyTagline: "Don't Let Your Drain Be A Pain!",
+  companyLogo: "",
+  statementOfService:
+    "Sewer Labz is a professional sewer inspection company. All inspections are performed using professional-grade CCTV camera equipment.",
+  includeDefectGraphic: true,
+  showSuggestedMaintenance: true,
+  customDropdowns: [],
+};
+
 export default function ReportBuilder() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -260,8 +272,6 @@ export default function ReportBuilder() {
     "details" | "system" | "conditions" | "recommendations"
   >("details");
   const [dragOver, setDragOver] = useState<string | null>(null);
-
-  // ✅ FIX 1: reportStatus state — no longer hardcoded to DRAFT
   const [reportStatus, setReportStatus] = useState<"DRAFT" | "COMPLETE">(
     "DRAFT",
   );
@@ -299,16 +309,9 @@ export default function ReportBuilder() {
   const [defects, setDefects] = useState<Defect[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
-  const [templateSettings, setTemplateSettings] = useState<Partial<Template>>({
-    companyName: "Sewer Labz",
-    companyTagline: "Don't Let Your Drain Be A Pain!",
-    companyLogo: "",
-    statementOfService:
-      "Sewer Labz is a professional sewer inspection company. All inspections are performed using professional-grade CCTV camera equipment.",
-    includeDefectGraphic: true,
-    showSuggestedMaintenance: true,
-    customDropdowns: [],
-  });
+  const [templateSettings, setTemplateSettings] = useState<Partial<Template>>(
+    defaultTemplateSettings,
+  );
   const [templateDropdownResponses, setTemplateDropdownResponses] = useState<
     Record<string, string>
   >({});
@@ -322,6 +325,7 @@ export default function ReportBuilder() {
     return () => unsub();
   }, []);
 
+  // Fetch templates
   useEffect(() => {
     if (!uid) return;
     const fetchTemplates = async () => {
@@ -329,7 +333,6 @@ export default function ReportBuilder() {
         const local = localStorage.getItem("sewer_templates");
         if (local) setTemplates(JSON.parse(local));
       } catch {}
-
       try {
         const token = await auth.currentUser?.getIdToken();
         const res = await fetch("/api/template", {
@@ -361,7 +364,6 @@ export default function ReportBuilder() {
         if (res.ok) {
           const data = await res.json();
           if (data.title) setTitle(data.title);
-          // ✅ FIX 3 (edit loading): load status from saved data
           if (data.status) setReportStatus(data.status);
           if (data.report) setDetails((p) => ({ ...p, ...data.report }));
           if (data.defects) setDefects(data.defects);
@@ -373,22 +375,23 @@ export default function ReportBuilder() {
           if (data.report?.endOfReport) setEndOfReport(data.report.endOfReport);
           if (data.report?.templateId)
             setSelectedTemplateId(data.report.templateId);
-          setTemplateSettings((p) => ({
-            ...p,
-            companyName: data.report.companyName ?? p.companyName,
-            companyTagline: data.report.companyTagline ?? p.companyTagline,
-            companyLogo: data.report.companyLogo ?? p.companyLogo,
-            statementOfService:
-              data.report.statementOfService ?? p.statementOfService,
-            includeDefectGraphic:
-              data.report.includeDefectGraphic ?? p.includeDefectGraphic,
-            showSuggestedMaintenance:
-              data.report.showSuggestedMaintenance ??
-              p.showSuggestedMaintenance,
-            customDropdowns: data.report.customDropdowns ?? p.customDropdowns,
-          }));
           if (data.report?.templateDropdownResponses)
             setTemplateDropdownResponses(data.report.templateDropdownResponses);
+          setTemplateSettings((p) => ({
+            ...p,
+            companyName: data.report?.companyName ?? p.companyName,
+            companyTagline: data.report?.companyTagline ?? p.companyTagline,
+            companyLogo: data.report?.companyLogo ?? p.companyLogo,
+            statementOfService:
+              data.report?.statementOfService ?? p.statementOfService,
+            includeDefectGraphic:
+              data.report?.includeDefectGraphic ?? p.includeDefectGraphic,
+            showSuggestedMaintenance:
+              data.report?.showSuggestedMaintenance ??
+              p.showSuggestedMaintenance,
+            customDropdowns:
+              data.report?.customDropdowns ?? p.customDropdowns ?? [],
+          }));
           return;
         }
       } catch {}
@@ -404,7 +407,6 @@ export default function ReportBuilder() {
     loadEdit();
   }, [editId, uid]);
 
-  // ✅ FIX 1: buildPayload now accepts an optional status override
   const buildPayload = (overrideStatus?: "DRAFT" | "COMPLETE") => {
     const id = editId || Date.now().toString();
     const report = {
@@ -421,7 +423,7 @@ export default function ReportBuilder() {
       statementOfService: templateSettings.statementOfService,
       includeDefectGraphic: templateSettings.includeDefectGraphic,
       showSuggestedMaintenance: templateSettings.showSuggestedMaintenance,
-      customDropdowns: templateSettings.customDropdowns,
+      customDropdowns: templateSettings.customDropdowns ?? [],
       templateDropdownResponses,
       propertyPhotos,
       corrections,
@@ -440,7 +442,6 @@ export default function ReportBuilder() {
     return { report, defects };
   };
 
-  // ✅ FIX 1: handleSave accepts optional status so Mark Complete works reliably
   const handleSaveDraft = async (overrideStatus?: "DRAFT" | "COMPLETE") => {
     if (!uid) return;
     setSaving(true);
@@ -469,6 +470,9 @@ export default function ReportBuilder() {
           setSavedMsg("✓ Saved");
         }
         setTimeout(() => setSavedMsg(""), 2500);
+      } else {
+        setSavedMsg("Save failed");
+        setTimeout(() => setSavedMsg(""), 2500);
       }
     } catch {
       setSavedMsg("Save failed");
@@ -478,7 +482,6 @@ export default function ReportBuilder() {
     }
   };
 
-  // ✅ FIX 2 & 11: No more window.open("","_blank") — opens HTML in a real new tab
   const handleGeneratePDF = async () => {
     setGenerating(true);
     try {
@@ -521,21 +524,12 @@ export default function ReportBuilder() {
         return;
       }
 
-      // ✅ Get the HTML as a blob and create a real object URL — no about:blank
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const tab = window.open(url, "_blank");
-
-      // After the tab loads, trigger print dialog automatically
       if (tab) {
-        tab.onload = () => {
-          setTimeout(() => {
-            tab.print();
-          }, 500);
-        };
+        tab.onload = () => setTimeout(() => tab.print(), 500);
       }
-
-      // Clean up the blob URL after 2 minutes
       setTimeout(() => URL.revokeObjectURL(url), 120_000);
     } catch {
       alert("Failed to generate PDF.");
@@ -546,6 +540,7 @@ export default function ReportBuilder() {
 
   const updateDetail = (k: string, v: string) =>
     setDetails((p) => ({ ...p, [k]: v }));
+
   const togglePerson = (p: string) =>
     setDetails((d) => ({
       ...d,
@@ -553,6 +548,7 @@ export default function ReportBuilder() {
         ? d.peoplePresent.filter((x) => x !== p)
         : [...d.peoplePresent, p],
     }));
+
   const toggleMaterial = (m: string) =>
     setDetails((d) => ({
       ...d,
@@ -560,6 +556,7 @@ export default function ReportBuilder() {
         ? d.pipeMaterials.filter((x) => x !== m)
         : [...d.pipeMaterials, m],
     }));
+
   const updateVideoLink = (i: number, v: string) => {
     const links = [...details.videoLinks];
     links[i] = v;
@@ -569,16 +566,7 @@ export default function ReportBuilder() {
   const handleSelectTemplate = (templateId: string) => {
     setSelectedTemplateId(templateId);
     if (!templateId) {
-      setTemplateSettings({
-        companyName: "Sewer Labz",
-        companyTagline: "Don't Let Your Drain Be A Pain!",
-        companyLogo: "",
-        statementOfService:
-          "Sewer Labz is a professional sewer inspection company. All inspections are performed using professional-grade CCTV camera equipment.",
-        includeDefectGraphic: true,
-        showSuggestedMaintenance: true,
-        customDropdowns: [],
-      });
+      setTemplateSettings(defaultTemplateSettings);
       setTemplateDropdownResponses({});
       return;
     }
@@ -606,12 +594,15 @@ export default function ReportBuilder() {
     ]);
     setActiveTab("conditions");
   };
+
   const updateDefect = (id: string, k: string, v: string) =>
     setDefects((p) => p.map((d) => (d.id === id ? { ...d, [k]: v } : d)));
+
   const toggleExpand = (id: string) =>
     setDefects((p) =>
       p.map((d) => (d.id === id ? { ...d, expanded: !d.expanded } : d)),
     );
+
   const deleteDefect = (id: string) =>
     setDefects((p) => p.filter((d) => d.id !== id));
 
@@ -659,9 +650,8 @@ export default function ReportBuilder() {
 
   const handlePropertyPhotos = (files: FileList | null) => {
     if (!files) return;
-    const remaining = 1 - propertyPhotos.length;
     Array.from(files)
-      .slice(0, remaining)
+      .slice(0, 1)
       .forEach((f) => {
         const reader = new FileReader();
         reader.onload = (e) => setPropertyPhotos([e.target?.result as string]);
@@ -679,6 +669,9 @@ export default function ReportBuilder() {
     color: active ? "#fff" : "#64748B",
     border: "none",
   });
+
+  const customDropdowns: CustomDropdown[] =
+    templateSettings.customDropdowns ?? [];
 
   return (
     <div
@@ -740,7 +733,6 @@ export default function ReportBuilder() {
               {title} ✏️
             </span>
           )}
-          {/* ✅ FIX 1: Status badge now reflects actual status */}
           <span
             style={{
               background: reportStatus === "COMPLETE" ? "#F0FDF4" : "#F1F5F9",
@@ -764,7 +756,6 @@ export default function ReportBuilder() {
               {savedMsg}
             </span>
           )}
-          {/* ✅ FIX 4: Mark Complete button */}
           {reportStatus !== "COMPLETE" && (
             <button
               onClick={() => handleSaveDraft("COMPLETE")}
@@ -902,6 +893,7 @@ export default function ReportBuilder() {
                 </p>
               </div>
             </div>
+
             <div>
               <div style={card}>
                 <h3
@@ -1314,7 +1306,7 @@ export default function ReportBuilder() {
                     lineHeight: "1.6",
                   }}
                 />
-                {templateSettings.customDropdowns?.length > 0 && (
+                {customDropdowns.length > 0 && (
                   <div style={{ marginTop: "16px" }}>
                     <h4
                       style={{
@@ -1324,33 +1316,25 @@ export default function ReportBuilder() {
                         marginBottom: "10px",
                       }}
                     >
-                      Custom Template Actions
+                      Custom Template Fields
                     </h4>
-                    {templateSettings.customDropdowns.map((dropdown, index) => (
-                      <div key={dropdown.name} style={{ marginBottom: "12px" }}>
-                        <label
-                          style={{
-                            display: "block",
-                            marginBottom: "6px",
-                            fontSize: "12px",
-                            color: "#475569",
-                          }}
-                        >
-                          {dropdown.name}
-                        </label>
+                    {customDropdowns.map((dropdown) => (
+                      <div
+                        key={dropdown.label}
+                        style={{ marginBottom: "12px" }}
+                      >
+                        <label style={lbl}>{dropdown.label}</label>
                         <select
-                          value={templateDropdownResponses[dropdown.name] || ""}
+                          value={
+                            templateDropdownResponses[dropdown.label] || ""
+                          }
                           onChange={(e) =>
                             setTemplateDropdownResponses((prev) => ({
                               ...prev,
-                              [dropdown.name]: e.target.value,
+                              [dropdown.label]: e.target.value,
                             }))
                           }
-                          style={{
-                            ...inp,
-                            width: "100%",
-                            padding: "10px 12px",
-                          }}
+                          style={{ ...inp, width: "100%" }}
                         >
                           <option value="">Select a response</option>
                           {dropdown.options.map((option) => (
