@@ -145,7 +145,7 @@ export default function SettingsPage() {
     setCheckoutLoading(planKey);
     try {
       const token = await auth.currentUser?.getIdToken();
-      const res = await fetch("/api/lemonsqueezy/checkout", {
+      const res = await fetch("/api/LemonSqueezy/checkout", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
