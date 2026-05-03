@@ -192,28 +192,20 @@ export default function DashboardPage() {
         body: JSON.stringify(data),
       });
       if (!pdfRes.ok) throw new Error("PDF generation failed");
-      const html = await pdfRes.text();
-      const win = window.open("about:blank", "_blank");
-      if (win) {
-        win.document.open();
-        win.document.write(html);
-        win.document.close();
-        setTimeout(() => {
-          win.focus();
-          win.print();
-        }, 2500);
+      const blob = await pdfRes.blob();
+      const url = URL.createObjectURL(blob);
+      const tab = window.open(url, "_blank");
+      if (tab) {
+        tab.onload = () => setTimeout(() => tab.print(), 500);
       } else {
-        // Popup blocked — download as HTML fallback
-        const blob = new Blob([html], { type: "text/html" });
-        const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
         a.download = `${report.title || "report"}.html`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 2000);
       }
+      setTimeout(() => URL.revokeObjectURL(url), 120_000);
     } catch {
       alert("Failed to generate PDF. Please try again.");
     } finally {

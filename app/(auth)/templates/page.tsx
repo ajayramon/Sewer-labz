@@ -68,7 +68,7 @@ export default function TemplatesPage() {
       if (local) setTemplates(JSON.parse(local));
 
       // Load from Firestore
-      const res = await fetch("/api/templates", {
+      const res = await fetch("/api/template", {
         headers: { "x-user-id": userId },
       });
       const data = await res.json();
@@ -96,7 +96,7 @@ export default function TemplatesPage() {
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this template?")) return;
     try {
-      await fetch(`/api/templates/${id}`, {
+      await fetch(`/api/template/${id}`, {
         method: "DELETE",
         headers: { "x-user-id": uid! },
       });
@@ -115,7 +115,7 @@ export default function TemplatesPage() {
     try {
       let saved: Template;
       if (isNew) {
-        const res = await fetch("/api/templates", {
+        const res = await fetch("/api/template", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-user-id": uid! },
           body: JSON.stringify(editing),
@@ -125,7 +125,7 @@ export default function TemplatesPage() {
         setTemplates(updated);
         localStorage.setItem("sewer_templates", JSON.stringify(updated));
       } else {
-        const res = await fetch(`/api/templates/${editing.id}`, {
+        const res = await fetch(`/api/template/${editing.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json", "x-user-id": uid! },
           body: JSON.stringify(editing),

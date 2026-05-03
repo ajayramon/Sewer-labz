@@ -16,6 +16,17 @@ type Defect = {
   images: DefectImage[];
   expanded: boolean;
 };
+type Template = {
+  id: string;
+  name: string;
+  companyName: string;
+  companyTagline: string;
+  companyLogo: string;
+  statementOfService: string;
+  includeDefectGraphic: boolean;
+  showSuggestedMaintenance: boolean;
+  customDropdowns: { label: string; options: string[] }[];
+};
 
 const conditionTypes = [
   "Select Condition Type",
@@ -286,6 +297,21 @@ export default function ReportBuilder() {
   const [correctionNotes, setCorrectionNotes] = useState("");
   const [propertyPhotos, setPropertyPhotos] = useState<string[]>([]);
   const [defects, setDefects] = useState<Defect[]>([]);
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [templateSettings, setTemplateSettings] = useState<Partial<Template>>({
+    companyName: "Sewer Labz",
+    companyTagline: "Don't Let Your Drain Be A Pain!",
+    companyLogo: "",
+    statementOfService:
+      "Sewer Labz is a professional sewer inspection company. All inspections are performed using professional-grade CCTV camera equipment.",
+    includeDefectGraphic: true,
+    showSuggestedMaintenance: true,
+    customDropdowns: [],
+  });
+  const [templateDropdownResponses, setTemplateDropdownResponses] = useState<
+    Record<string, string>
+  >({});
 
   // Auth check
   useEffect(() => {
@@ -295,6 +321,34 @@ export default function ReportBuilder() {
     });
     return () => unsub();
   }, []);
+
+  useEffect(() => {
+    if (!uid) return;
+    const fetchTemplates = async () => {
+      try {
+        const local = localStorage.getItem("sewer_templates");
+        if (local) setTemplates(JSON.parse(local));
+      } catch {}
+
+      try {
+        const token = await auth.currentUser?.getIdToken();
+        const res = await fetch("/api/template", {
+          headers: { "x-user-id": uid, Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.templates?.length) {
+            setTemplates(data.templates);
+            localStorage.setItem(
+              "sewer_templates",
+              JSON.stringify(data.templates),
+            );
+          }
+        }
+      } catch {}
+    };
+    fetchTemplates();
+  }, [uid]);
 
   // Load edit data
   useEffect(() => {
@@ -317,6 +371,24 @@ export default function ReportBuilder() {
           if (data.report?.propertyPhotos)
             setPropertyPhotos(data.report.propertyPhotos);
           if (data.report?.endOfReport) setEndOfReport(data.report.endOfReport);
+          if (data.report?.templateId)
+            setSelectedTemplateId(data.report.templateId);
+          setTemplateSettings((p) => ({
+            ...p,
+            companyName: data.report.companyName ?? p.companyName,
+            companyTagline: data.report.companyTagline ?? p.companyTagline,
+            companyLogo: data.report.companyLogo ?? p.companyLogo,
+            statementOfService:
+              data.report.statementOfService ?? p.statementOfService,
+            includeDefectGraphic:
+              data.report.includeDefectGraphic ?? p.includeDefectGraphic,
+            showSuggestedMaintenance:
+              data.report.showSuggestedMaintenance ??
+              p.showSuggestedMaintenance,
+            customDropdowns: data.report.customDropdowns ?? p.customDropdowns,
+          }));
+          if (data.report?.templateDropdownResponses)
+            setTemplateDropdownResponses(data.report.templateDropdownResponses);
           return;
         }
       } catch {}
@@ -339,7 +411,18 @@ export default function ReportBuilder() {
       ...details,
       id,
       title,
-      status: overrideStatus ?? reportStatus, // uses override if provided, otherwise current state
+      status: overrideStatus ?? reportStatus,
+      templateId: selectedTemplateId || undefined,
+      templateName:
+        templates.find((t) => t.id === selectedTemplateId)?.name || undefined,
+      companyName: templateSettings.companyName,
+      companyTagline: templateSettings.companyTagline,
+      companyLogo: templateSettings.companyLogo,
+      statementOfService: templateSettings.statementOfService,
+      includeDefectGraphic: templateSettings.includeDefectGraphic,
+      showSuggestedMaintenance: templateSettings.showSuggestedMaintenance,
+      customDropdowns: templateSettings.customDropdowns,
+      templateDropdownResponses,
       propertyPhotos,
       corrections,
       correctionNotes,
@@ -481,6 +564,29 @@ export default function ReportBuilder() {
     const links = [...details.videoLinks];
     links[i] = v;
     setDetails((p) => ({ ...p, videoLinks: links }));
+  };
+
+  const handleSelectTemplate = (templateId: string) => {
+    setSelectedTemplateId(templateId);
+    if (!templateId) {
+      setTemplateSettings({
+        companyName: "Sewer Labz",
+        companyTagline: "Don't Let Your Drain Be A Pain!",
+        companyLogo: "",
+        statementOfService:
+          "Sewer Labz is a professional sewer inspection company. All inspections are performed using professional-grade CCTV camera equipment.",
+        includeDefectGraphic: true,
+        showSuggestedMaintenance: true,
+        customDropdowns: [],
+      });
+      setTemplateDropdownResponses({});
+      return;
+    }
+    const template = templates.find((t) => t.id === templateId);
+    if (template) {
+      setTemplateSettings({ ...template });
+      setTemplateDropdownResponses({});
+    }
   };
 
   const addDefect = () => {
@@ -759,6 +865,43 @@ export default function ReportBuilder() {
               gap: "20px",
             }}
           >
+            <div style={{ gridColumn: "1 / -1" }}>
+              <div style={card}>
+                <h3
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: 700,
+                    color: "#0F2A4A",
+                    margin: "0 0 14px",
+                  }}
+                >
+                  Report Template
+                </h3>
+                <label style={lbl}>Select Template</label>
+                <select
+                  value={selectedTemplateId}
+                  onChange={(e) => handleSelectTemplate(e.target.value)}
+                  style={{ ...inp, width: "100%" }}
+                >
+                  <option value="">Default layout</option>
+                  {templates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name}
+                    </option>
+                  ))}
+                </select>
+                <p
+                  style={{
+                    fontSize: "12px",
+                    color: "#94A3B8",
+                    marginTop: "10px",
+                  }}
+                >
+                  Apply a saved template to prefill company branding,
+                  statements, and custom dropdown options.
+                </p>
+              </div>
+            </div>
             <div>
               <div style={card}>
                 <h3
@@ -1171,6 +1314,55 @@ export default function ReportBuilder() {
                     lineHeight: "1.6",
                   }}
                 />
+                {templateSettings.customDropdowns?.length > 0 && (
+                  <div style={{ marginTop: "16px" }}>
+                    <h4
+                      style={{
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        color: "#334155",
+                        marginBottom: "10px",
+                      }}
+                    >
+                      Custom Template Actions
+                    </h4>
+                    {templateSettings.customDropdowns.map((dropdown, index) => (
+                      <div key={dropdown.name} style={{ marginBottom: "12px" }}>
+                        <label
+                          style={{
+                            display: "block",
+                            marginBottom: "6px",
+                            fontSize: "12px",
+                            color: "#475569",
+                          }}
+                        >
+                          {dropdown.name}
+                        </label>
+                        <select
+                          value={templateDropdownResponses[dropdown.name] || ""}
+                          onChange={(e) =>
+                            setTemplateDropdownResponses((prev) => ({
+                              ...prev,
+                              [dropdown.name]: e.target.value,
+                            }))
+                          }
+                          style={{
+                            ...inp,
+                            width: "100%",
+                            padding: "10px 12px",
+                          }}
+                        >
+                          <option value="">Select a response</option>
+                          {dropdown.options.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>

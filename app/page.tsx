@@ -151,7 +151,7 @@ export default function Dashboard() {
     }
     try {
       const token = await auth.currentUser?.getIdToken();
-      const res = await fetch("/api/templates", {
+      const res = await fetch("/api/template", {
         headers: { "x-user-id": userId, Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -324,7 +324,7 @@ export default function Dashboard() {
     try {
       const token = await auth.currentUser?.getIdToken();
       if (isNewTemplate) {
-        const res = await fetch("/api/templates", {
+        const res = await fetch("/api/template", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -340,7 +340,7 @@ export default function Dashboard() {
           localStorage.setItem("sewer_templates", JSON.stringify(updated));
         } else throw new Error("API failed");
       } else {
-        const res = await fetch(`/api/templates/${editingTemplate.id}`, {
+        const res = await fetch(`/api/template/${editingTemplate.id}`, {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
@@ -376,7 +376,7 @@ export default function Dashboard() {
     if (!confirm("Delete this template?")) return;
     try {
       const token = await auth.currentUser?.getIdToken();
-      await fetch(`/api/templates/${id}`, {
+      await fetch(`/api/template/${id}`, {
         method: "DELETE",
         headers: { "x-user-id": uid!, Authorization: `Bearer ${token}` },
       });

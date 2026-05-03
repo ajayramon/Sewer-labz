@@ -33,16 +33,48 @@ export async function POST(req: NextRequest) {
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: space-between;
     min-height: 100vh;
-    padding: 20px 40px 30px;
+    padding: 14px 40px 32px;
     page-break-after: always;
   }
 
-  .cover-top { text-align: center; padding-top: 16px; margin-bottom: 12px; }
-  .cover-logo { font-size: 44px; font-weight: 900; letter-spacing: -1px; margin-bottom: 4px; }
-  .cover-logo span { color: #2D8C4E; }
-  .cover-tagline { font-size: 15px; color: #2D8C4E; font-weight: 700; margin-bottom: 2px; }
-  .cover-subtitle { font-size: 13px; color: #555; }
+  .cover-top {
+    text-align: center;
+    padding-top: 12px;
+    margin-bottom: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+  .cover-logo {
+    font-size: 38px;
+    font-weight: 900;
+    letter-spacing: -1px;
+    margin-bottom: 0;
+  }
+  .cover-logo span {
+    color: #2D8C4E;
+  }
+  .cover-logo-img {
+    max-width: 260px;
+    max-height: 90px;
+    object-fit: contain;
+    display: block;
+    margin: 0 auto;
+  }
+  .cover-tagline {
+    font-size: 15px;
+    color: #2D8C4E;
+    font-weight: 700;
+    margin-bottom: 0;
+  }
+  .cover-subtitle {
+    font-size: 13px;
+    color: #555;
+    margin-top: 8px;
+  }
 
   .cover-photo-wrap {
     flex: 1;
@@ -154,8 +186,9 @@ export async function POST(req: NextRequest) {
 <!-- COVER PAGE -->
 <div class="cover">
   <div class="cover-top">
-    <div class="cover-logo">SEWER <span>LABZ</span></div>
-    <div class="cover-tagline">Don't Let Your Drain Be A Pain!</div>
+    ${report.companyLogo ? `<img src="${report.companyLogo}" class="cover-logo-img" alt="Company logo" />` : ""}
+    <div class="cover-logo">${report.companyName || "SEWER <span>LABZ</span>"}</div>
+    ${report.companyTagline ? `<div class="cover-tagline">${report.companyTagline}</div>` : ""}
     <div class="cover-subtitle">Professional Sewer Inspection Report</div>
   </div>
 
@@ -195,14 +228,92 @@ export async function POST(req: NextRequest) {
       <span>Inspection Report Exclusively For: ${report.fileNumber || report.clientName || ""}</span>
     </div>
     <div class="section-title">Table of Contents</div>
-    ${["Cover Page","Table of Contents","Sewer Inspection Disclosure","Scope of the Sewer Inspection","Point of Reference","Client & Site Information","Sewer System Information","Sewer Pipe Conditions","End of Report","Statement of Service","Understanding Sewer Material & Defects"]
-      .map(item => `<div class="toc-item">${item}</div>`).join("")}
+    ${[
+      "Cover Page",
+      "Table of Contents",
+      "Sewer Inspection Disclosure",
+      "Scope of the Sewer Inspection",
+      "Point of Reference",
+      "Client & Site Information",
+      "Sewer System Information",
+      "Sewer Pipe Conditions",
+      "End of Report",
+      "Statement of Service",
+      "Understanding Sewer Material & Defects",
+    ]
+      .map((item) => `<div class="toc-item">${item}</div>`)
+      .join("")}
+    ${report.includeDefectGraphic ? `<div class="toc-item">Common Sewer Defect Graphic</div>` : ""}
   </div>
   <div class="report-footer">
     This report was prepared for the client listed above in accordance with our inspection agreement.<br>
     <strong>This report is not to be used for the purposes of substitute disclosure.</strong>
   </div>
 </div>
+
+${
+  report.includeDefectGraphic
+    ? `
+<!-- COMMON SEWER DEFECT GRAPHIC -->
+<div class="page page-break">
+  <div class="page-content">
+    <div class="report-header">
+      <span>${report.inspectedAt || ""}</span>
+      <span>Inspection Report Exclusively For: ${report.fileNumber || report.clientName || ""}</span>
+    </div>
+    <div class="section-title">Common Sewer Defect Graphic</div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:16px;">
+      ${[
+        {
+          title: "No Defect",
+          color: "#F0FDF4",
+          border: "#16A34A",
+          text: "No observable defect. Continue regular monitoring.",
+        },
+        {
+          title: "Minor",
+          color: "#FFFBEB",
+          border: "#D97706",
+          text: "Minor condition. Monitor and schedule evaluation.",
+        },
+        {
+          title: "Moderate",
+          color: "#FFF7ED",
+          border: "#EA580C",
+          text: "Moderate condition. Repair recommended soon.",
+        },
+        {
+          title: "Major",
+          color: "#FEF2F2",
+          border: "#DC2626",
+          text: "Major defect. Immediate repair recommended.",
+        },
+        {
+          title: "Suggested Maintenance",
+          color: "#EFF6FF",
+          border: "#2563EB",
+          text: "Maintenance recommended to prevent future issues.",
+        },
+      ]
+        .map(
+          (item) => `
+        <div style="background:${item.color};border:1px solid ${item.border};border-radius:10px;padding:16px;">
+          <div style="font-size:14px;font-weight:700;color:${item.border};margin-bottom:8px;">${item.title}</div>
+          <div style="font-size:12px;color:#1f2937;line-height:1.6;">${item.text}</div>
+        </div>
+      `,
+        )
+        .join("")}
+    </div>
+  </div>
+  <div class="report-footer">
+    This report was prepared for the client listed above in accordance with our inspection agreement.<br>
+    <strong>This report is not to be used for the purposes of substitute disclosure.</strong>
+  </div>
+</div>
+`
+    : ""
+}
 
 <!-- DISCLOSURE + SCOPE -->
 <div class="page page-break">
@@ -247,55 +358,93 @@ export async function POST(req: NextRequest) {
           ["Location", report.location],
           ["Date", report.inspectedAt],
           ["Time", report.inspectionTime],
-          ["People Present", Array.isArray(report.peoplePresent) ? report.peoplePresent.join(", ") : report.peoplePresent],
+          [
+            "People Present",
+            Array.isArray(report.peoplePresent)
+              ? report.peoplePresent.join(", ")
+              : report.peoplePresent,
+          ],
           ["Buyer's Agent", report.buyersAgent],
           ["Building Occupied", report.buildingOccupied],
           ["Weather/Soil", report.weather],
-        ].filter(([, v]) => v)
-          .map(([label, value]) => `
+        ]
+          .filter(([, v]) => v)
+          .map(
+            ([label, value]) => `
             <div class="info-row">
               <span class="info-label">${label}</span>
               <span class="info-value">${value}</span>
-            </div>`).join("")}
+            </div>`,
+          )
+          .join("")}
       </div>
-      ${report.propertyPhotos && report.propertyPhotos.length > 0
-        ? `<div class="client-photos">
-             ${report.propertyPhotos.slice(0, 2).map((p: string) => `<img src="${p}" class="client-photo" alt="Property" />`).join("")}
+      ${
+        report.propertyPhotos && report.propertyPhotos.length > 0
+          ? `<div class="client-photos">
+             ${report.propertyPhotos
+               .slice(0, 2)
+               .map(
+                 (p: string) =>
+                   `<img src="${p}" class="client-photo" alt="Property" />`,
+               )
+               .join("")}
            </div>`
-        : ""}
+          : ""
+      }
     </div>
 
     <div class="section-subtitle" style="margin-top:16px;">Sewer System Information</div>
 
-    ${report.cameraDirection1 || report.cameraDirection2 ? `
+    ${
+      report.cameraDirection1 || report.cameraDirection2
+        ? `
       <div class="piping-box">
         <strong>PIPING</strong><br>
         The camera went in the following direction(s):<br>
         ${report.cameraDirection1 ? `1st Direction: ${report.cameraDirection1}` : ""}
         ${report.cameraDirection2 ? `<br>2nd Direction: ${report.cameraDirection2}` : ""}
         ${report.pipingNotes ? `<br>${report.pipingNotes}` : ""}
-      </div>` : ""}
+      </div>`
+        : ""
+    }
 
-    ${report.cleanoutLocation ? `
+    ${
+      report.cleanoutLocation
+        ? `
       <div class="system-row">
         <div class="system-label">Location of Camera Entry</div>
         <div class="system-value">${report.cleanoutLocation}</div>
-      </div>` : ""}
+      </div>`
+        : ""
+    }
 
-    ${report.pipeMaterials && report.pipeMaterials.length > 0 ? `
+    ${
+      report.pipeMaterials && report.pipeMaterials.length > 0
+        ? `
       <div class="system-row">
         <div class="system-label">Sewer Pipe Materials</div>
         <div class="system-value">${report.pipeMaterials.join(", ")}</div>
-      </div>` : ""}
+      </div>`
+        : ""
+    }
 
-    ${report.videoLinks && report.videoLinks.filter((l: string) => l).length > 0 ? `
+    ${
+      report.videoLinks && report.videoLinks.filter((l: string) => l).length > 0
+        ? `
       <div class="system-row">
         <div class="system-label">Sewer Video Link(s)</div>
         <div class="system-value">
-          ${report.videoLinks.filter((l: string) => l).map((link: string, i: number) => `
-            <div style="margin-bottom:4px;">Link ${i + 1}: <a href="${link}" style="color:#0066cc;">${link}</a></div>`).join("")}
+          ${report.videoLinks
+            .filter((l: string) => l)
+            .map(
+              (link: string, i: number) => `
+            <div style="margin-bottom:4px;">Link ${i + 1}: <a href="${link}" style="color:#0066cc;">${link}</a></div>`,
+            )
+            .join("")}
         </div>
-      </div>` : ""}
+      </div>`
+        : ""
+    }
   </div>
   <div class="report-footer">
     This report was prepared for the client listed above in accordance with our inspection agreement.<br>
@@ -312,29 +461,48 @@ export async function POST(req: NextRequest) {
     </div>
     <div class="section-subtitle">Sewer Piping Conditions</div>
 
-    ${!defects || defects.length === 0
-      ? '<p style="color:#999;font-size:13px;margin-top:12px;">No conditions recorded.</p>'
-      : defects.map((d: any) => `
+    ${
+      !defects || defects.length === 0
+        ? '<p style="color:#999;font-size:13px;margin-top:12px;">No conditions recorded.</p>'
+        : defects
+            .map(
+              (d: any) => `
         <div class="defect-item">
           <p class="defect-desc">
             <strong>-@ ${d.videoTimeH || "--"}:${d.videoTimeM || "--"} / ${d.footageStart || "0"} ft approx. in video the following condition was observed.</strong>
-            ${d.conditionType && d.conditionType !== "Select Condition Type"
-              ? `<strong> ${d.conditionType}${
-                  d.severity === "Major" ? "; Major defect."
-                  : d.severity === "Moderate" ? "; moderate."
-                  : d.severity === "Minor" ? "; minor."
-                  : d.severity === "Suggested Maintenance" ? "; suggested maintenance."
-                  : "."}</strong>`
-              : ""}
+            ${
+              d.conditionType && d.conditionType !== "Select Condition Type"
+                ? `<strong> ${d.conditionType}${
+                    d.severity === "Major"
+                      ? "; Major defect."
+                      : d.severity === "Moderate"
+                        ? "; moderate."
+                        : d.severity === "Minor"
+                          ? "; minor."
+                          : d.severity === "Suggested Maintenance"
+                            ? "; suggested maintenance."
+                            : "."
+                  }</strong>`
+                : ""
+            }
             ${d.narrative ? ` ${d.narrative}` : ""}
           </p>
-          ${d.images && d.images.length > 0
-            ? `<div class="defect-photos">
-                 ${d.images.map((img: any) => `
-                   <div><img src="${img.url}" class="defect-photo" alt="Inspection photo" /></div>`).join("")}
+          ${
+            d.images && d.images.length > 0
+              ? `<div class="defect-photos">
+                 ${d.images
+                   .map(
+                     (img: any) => `
+                   <div><img src="${img.url}" class="defect-photo" alt="Inspection photo" /></div>`,
+                   )
+                   .join("")}
                </div>`
-            : ""}
-        </div>`).join("")}
+              : ""
+          }
+        </div>`,
+            )
+            .join("")
+    }
   </div>
   <div class="report-footer">
     This report was prepared for the client listed above in accordance with our inspection agreement.<br>
@@ -354,27 +522,60 @@ export async function POST(req: NextRequest) {
     </div>
     ${report.notes ? `<p style="font-size:13px;line-height:1.8;margin-bottom:16px;">${report.notes}</p>` : ""}
 
-    ${report.corrections && Object.entries(report.corrections).some(([, v]) => v && v !== "N/A") ? `
+    ${
+      report.corrections &&
+      Object.entries(report.corrections).some(([, v]) => v && v !== "N/A")
+        ? `
       <div style="font-size:15px;font-weight:700;border-bottom:1px solid #000;padding-bottom:4px;margin-bottom:12px;margin-top:20px;">
         Corrective Action Recommendations
       </div>
-      ${Object.entries(report.corrections).filter(([, v]) => v && v !== "N/A")
-        .map(([label, value]) => `
+      ${Object.entries(report.corrections)
+        .filter(([, v]) => v && v !== "N/A")
+        .map(
+          ([label, value]) => `
           <div class="correction-row">
             <span class="correction-label">${label}</span>
             <span class="correction-value">${value}</span>
-          </div>`).join("")}` : ""}
+          </div>`,
+        )
+        .join("")}`
+        : ""
+    }
 
     ${report.correctionNotes ? `<p style="font-size:13px;line-height:1.8;margin-top:12px;">${report.correctionNotes}</p>` : ""}
+
+    ${
+      report.templateDropdownResponses &&
+      Object.keys(report.templateDropdownResponses).length > 0
+        ? `
+      <div style="font-size:15px;font-weight:700;border-bottom:1px solid #000;padding-bottom:4px;margin-bottom:12px;margin-top:20px;">
+        Custom Dropdown Selections
+      </div>
+      ${Object.entries(report.templateDropdownResponses)
+        .map(
+          ([label, value]) => `
+          <div class="correction-row">
+            <span class="correction-label">${label}</span>
+            <span class="correction-value">${value}</span>
+          </div>`,
+        )
+        .join("")}`
+        : ""
+    }
 
     <div style="font-size:15px;font-weight:700;border-bottom:1px solid #000;padding-bottom:4px;margin-bottom:12px;margin-top:24px;">
       End of Report — Recommendations
     </div>
-    ${report.endOfReport && Object.values(report.endOfReport).some((v) => v && v !== "Select...")
-      ? Object.entries(report.endOfReport).filter(([, v]) => v && v !== "Select...")
-          .map(([, value]) => `<div class="end-statement">${value}</div>`).join("")
-      : `<div class="end-statement">Given the condition(s) above we recommend full evaluations and/or corrections with written findings and costs to cure by a competent licensed plumbing contractor before the end/close of the inspection contingency period.</div>
-         <div class="end-statement">Recommend sewer inspections after repairs are made to ensure efficacy of work and to inspect any areas of the sewer lateral not visible due to defect(s).</div>`}
+    ${
+      report.endOfReport &&
+      Object.values(report.endOfReport).some((v) => v && v !== "Select...")
+        ? Object.entries(report.endOfReport)
+            .filter(([, v]) => v && v !== "Select...")
+            .map(([, value]) => `<div class="end-statement">${value}</div>`)
+            .join("")
+        : `<div class="end-statement">Given the condition(s) above we recommend full evaluations and/or corrections with written findings and costs to cure by a competent licensed plumbing contractor before the end/close of the inspection contingency period.</div>
+         <div class="end-statement">Recommend sewer inspections after repairs are made to ensure efficacy of work and to inspect any areas of the sewer lateral not visible due to defect(s).</div>`
+    }
   </div>
   <div class="report-footer">
     This report was prepared for the client listed above in accordance with our inspection agreement.<br>
@@ -390,11 +591,7 @@ export async function POST(req: NextRequest) {
       <span>Inspection Report Exclusively For: ${report.fileNumber || report.clientName || ""}</span>
     </div>
     <div class="section-title">Statement of Service</div>
-    <p style="font-size:13px;line-height:1.8;margin-bottom:14px;">Sewer Labz was retained for a survey of the listed structure's main sewer line in an effort to identify any areas of suspect blockages, deficiencies or damage and to document the areas for further review and or action by associated trades professional.</p>
-    <p style="font-size:13px;line-height:1.8;margin-bottom:14px;">This report is based on information obtained at the site at the given date and time of the inspection. Findings are documented with videos and visual photographs of the impacted areas. The sewer survey is limited to maximum allowance of approximately 150 feet, arrival at blockage, non-passable debris, or arrival at city sewer.</p>
-    <p style="font-size:13px;line-height:1.8;margin-bottom:14px;">This report is for the exclusive use of our client and is not intended for any other purpose. We can make no representations regarding conditions that may be present but concealed or inaccessible during the survey.</p>
-    <p style="font-size:13px;line-height:1.8;margin-bottom:14px;">We recommend all areas showing anomalies should be evaluated further to find out the cause and be repaired. Our recommendations are not intended as criticisms of the structure, but rather as professional opinions regarding conditions that we observed at the time of our inspection.</p>
-    <p style="font-size:13px;line-height:1.8;">Our reports are designed to be clear, concise and useful. Please review this report carefully. If there is anything you would like us to explain, please feel free to call us as we would be happy to answer any questions.</p>
+    <p style="font-size:13px;line-height:1.8;margin-bottom:14px;">${(report.statementOfService || "Sewer Labz was retained for a survey of the listed structure's main sewer line in an effort to identify any areas of suspect blockages, deficiencies or damage and to document the areas for further review and or action by associated trades professional.").replace(/\n/g, "<br>")}</p>
   </div>
   <div class="report-footer">
     This report was prepared for the client listed above in accordance with our inspection agreement.<br>
@@ -430,7 +627,12 @@ export async function POST(req: NextRequest) {
           ["Lead", "100+ years"],
           ["Copper", "50+ years"],
           ["Stainless Steel", "50+ years"],
-        ].map(([type, life]) => `<tr><td>${type}</td><td><strong>${life}</strong></td></tr>`).join("")}
+        ]
+          .map(
+            ([type, life]) =>
+              `<tr><td>${type}</td><td><strong>${life}</strong></td></tr>`,
+          )
+          .join("")}
       </tbody>
     </table>
     <p style="font-size:11px;color:#555;margin-top:14px;line-height:1.7;">
@@ -455,9 +657,9 @@ export async function POST(req: NextRequest) {
         "Cache-Control": "no-store",
       },
     });
-
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Failed to generate PDF";
+    const message =
+      error instanceof Error ? error.message : "Failed to generate PDF";
     console.error("PDF route error:", error);
     return NextResponse.json({ error: message }, { status: 500 });
   }
